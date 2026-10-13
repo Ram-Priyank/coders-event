@@ -1,0 +1,32 @@
+name: Validate application
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+          MYSQL_DATABASE: depttrack
+          MYSQL_USER: depttrack
+          MYSQL_PASSWORD: local-dev-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s --health-timeout=3s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+      - run: npm ci && npm ci --prefix server && npm ci --prefix client
+      - run: npm run migrate --prefix server
+      - run: npm test
+      - run: npm run build
+      - run: npm run lint --prefix client

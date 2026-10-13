@@ -1,16 +1,21 @@
 {
-  "name": "department-inventory-mern",
+  "name": "depttrack",
   "version": "1.0.0",
-  "description": "Department Inventory and Student Item Issue Management System - MERN Stack",
+  "description": "Department inventory management with React, Express, and MySQL",
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
-    "start": "node server/server.js",
+    "start": "npm start --prefix server",
     "client": "npm run dev --prefix client",
     "server": "npm run dev --prefix server",
-    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
-    "seed": "cd server && npm run seed"
+    "install-all": "npm ci && npm ci --prefix server && npm ci --prefix client",
+    "seed": "cd server && npm run seed",
+    "build": "npm run build --prefix server && npm run build --prefix client",
+    "test": "npm test --prefix server",
+    "db": "bash scripts/dev-db.sh",
+    "format": "prettier --write \"server/src/**/*.ts\" \"server/tests/**/*.ts\" \"client/src/*.{jsx,css}\""
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "prettier": "^3.9.10"
   }
 }

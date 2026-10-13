@@ -1,0 +1,36 @@
+import {test,expect} from '@playwright/test';
+async function login(page,user){await page.goto('/');await page.getByLabel('Username',{exact:true}).fill(user);await page.getByLabel('Password',{exact:true}).fill(process.env.SEED_PASSWORD||'DeptTrack-Demo-2026');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('heading',{name:'Everything in its place.'})).toBeVisible();}
+test('coordinator can navigate all management screens',async({page})=>{const errors=[];page.on('pageerror',e=>errors.push(e.message));await login(page,'admin');for(const tab of ['Inventory','Loans','Renewals','Students','Locations','Reports','Audit trail','Settings']){await page.getByRole('navigation').getByRole('button',{name:tab,exact:true}).click();await expect(page.getByRole('heading',{name:tab,exact:true})).toBeVisible();}await page.getByRole('navigation').getByRole('button',{name:'Overview',exact:true}).click();await page.screenshot({path:'/tmp/depttrack-desktop.png',fullPage:true});expect(errors).toEqual([]);});
+test('student has scoped navigation and a responsive mobile workspace',async({page})=>{await page.setViewportSize({width:390,height:844});await login(page,'priya');await expect(page.getByRole('navigation').getByRole('button',{name:'Inventory',exact:true})).toHaveCount(0);await page.getByRole('navigation').getByRole('button',{name:'Loans',exact:true}).click();await expect(page.getByRole('heading',{name:'Loans',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'/tmp/depttrack-mobile.png',fullPage:true});await page.getByRole('navigation').getByRole('button',{name:'Renewals',exact:true}).click();await expect(page.getByRole('heading',{name:'Renewals',exact:true})).toBeVisible();});
+test('issue form reports business validation failures without closing',async({page})=>{await login(page,'admin');await page.getByRole('button',{name:'Issue equipment',exact:true}).click();await page.getByRole('combobox',{name:'Item',exact:true}).selectOption('cable');await page.getByRole('combobox',{name:'Location',exact:true}).selectOption('lab');await page.getByLabel('Quantity',{exact:true}).fill('999');await page.getByLabel('Purpose',{exact:true}).fill('Browser validation check');await page.getByRole('button',{name:'Save changes'}).click();await expect(page.getByRole('alert')).toContainText('Student issue limit exceeded');await expect(page.getByRole('dialog')).toBeVisible();});
+test('issue, student renewal, approval and full return work in the browser',async({page})=>{
+ await login(page,'admin');
+ await page.getByRole('button',{name:'Issue equipment',exact:true}).click();
+ await page.getByRole('combobox',{name:'Item',exact:true}).selectOption('cable');
+ await page.getByRole('combobox',{name:'Location',exact:true}).selectOption('lab');
+ await page.getByLabel('Quantity',{exact:true}).fill('1');
+ await page.getByLabel('Purpose',{exact:true}).fill('Browser acceptance workflow');
+ await page.getByRole('button',{name:'Save changes'}).click();
+ await expect(page.getByRole('heading',{name:'Issue acknowledged'})).toBeVisible();
+ const reference=(await page.getByText(/^Reference:/).textContent()).replace('Reference: ','');
+ await page.getByRole('button',{name:'Done',exact:true}).click();
+ await page.getByRole('button',{name:'Sign out',exact:true}).click(); await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+ await login(page,'priya');
+ await page.getByRole('navigation').getByRole('button',{name:'Loans',exact:true}).click();
+ await page.getByRole('row').filter({hasText:reference.slice(0,8)}).getByRole('button',{name:'Request renewal'}).click();
+ await page.getByLabel('Why do you need more time?').fill('Finish browser acceptance workflow '+reference.slice(0,8));
+ await page.getByRole('button',{name:'Save changes'}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ await page.getByRole('button',{name:'Sign out',exact:true}).click(); await expect(page.getByRole('heading',{name:'Welcome back',exact:true})).toBeVisible();
+ await login(page,'admin');
+ await page.getByRole('navigation').getByRole('button',{name:'Renewals',exact:true}).click();
+ await page.getByRole('row').filter({hasText:'Finish browser acceptance workflow '+reference.slice(0,8)}).filter({hasText:'PENDING'}).getByRole('button',{name:'Review request'}).click();
+ await page.getByLabel('Decision remarks').fill('Approved for acceptance check');
+ await page.getByRole('button',{name:'Save changes'}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ await page.getByRole('navigation').getByRole('button',{name:'Loans',exact:true}).click();
+ await page.getByRole('row').filter({hasText:reference.slice(0,8)}).getByRole('button',{name:'Receive return'}).click();
+ await page.getByLabel('Inspection remarks').fill('Returned after browser check');
+ await page.getByRole('button',{name:'Save changes'}).click();
+ await expect(page.getByRole('row').filter({hasText:reference.slice(0,8)})).toContainText('Returned');
+});

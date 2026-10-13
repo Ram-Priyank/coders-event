@@ -1,135 +1,61 @@
-# Department Inventory and Student Item Issue Management System (DeptTrack)
+# DeptTrack
 
-> **MERN Stack Application** developed for **Problem Statement #5: Department Inventory and Student Item Issue Management System**.
+Department inventory and student lending application, implemented from `Department_Inventory_Combined_Final_MySQL_Design.pdf`.
 
-[![Node.js](https://img.shields.io/badge/Node.js-v20%2B-green.svg)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-v19-blue.svg)](https://react.dev/)
-[![Express](https://img.shields.io/badge/Express-v4-lightgrey.svg)](https://expressjs.com/)
-[![Vite](https://img.shields.io/badge/Vite-v6-purple.svg)](https://vitejs.dev/)
+React 19 + Vite frontend, a strict TypeScript Express API, and MySQL 8.4/InnoDB. The previous browser role switcher and JSON/MongoDB fallback have been replaced with authenticated server sessions and transactional persistence.
 
----
+## Run locally
 
-## 📋 Overview
+Requires Node.js 24, npm, and Docker (or an existing MySQL 8+ database).
 
-**DeptTrack** is a full-stack web application designed for academic department inventory coordinators and students. It maintains accurate stock availability, handles reusable item issues, inspects condition upon returns, and enforces strict loan duration and renewal workflows.
-
-### ⏱️ The 15-Day Rule & Core Policies
-- **15-Calendar-Day Loan Period:** Every item issued is automatically assigned a due date 15 calendar days from the issue date.
-- **Renewal Extension:** Each coordinator-approved renewal extends the due date by an additional **15 calendar days** from the existing due date.
-- **Approval Prerequisite:** Submitting a renewal request alone does **not** extend the due date; coordinator approval is mandatory.
-- **Individually Tracked Assets vs Quantity Items:**
-  - **Individually Tracked:** (e.g., Laptops, Development Boards like `DB-010`) have unique asset IDs and cannot be issued to more than one student at the same time.
-  - **Quantity-Based:** (e.g., USB cables, Adapters) track total, available, and issued counts.
-- **Stock & Condition Restrictions:** Items in damaged or maintenance condition cannot be issued. Stock cannot be overdrawn; if stock is insufficient, the system explains the exact deficit (e.g., *"Five adapters were requested, but only three are currently available"*).
-- **Partial Returns:** Outstanding balance continues to be tracked until all items are returned.
-- **Condition on Return:** Usable condition immediately restores stock availability; damaged or maintenance items remain unavailable until cleared by the coordinator.
-- **Permanent Audit Trail:** Every transaction (issue, return, renewal, and stock adjustment) is logged with date and responsible user.
-
----
-
-## 🚀 Preloaded Demonstration Scenario (Problem Statement Section 5)
-
-Pre-seeded for **M.Sc. DFIS, Semester I**:
-- **10 Development Boards** (`DB-001` through `DB-010`), each with unique asset IDs and serial numbers.
-- **20 Reusable USB Cables** tracked by quantity.
-- Registered students (including **Priya Sharma - DFIS-2026-001**) and authorized coordinator (**Dr. S. Rao**).
-- One development board (`DB-010`) and two USB cables issued on 1 October 2026 with due date 16 October 2026.
-- Demonstration overdue item with live countdown banner.
-
----
-
-## 🛠️ Tech Stack & Architecture
-
-```
-code/
-├── client/                 # React frontend powered by Vite
-│   ├── src/
-│   │   ├── App.jsx         # Coordinator Dashboard, Student Portal, Modals
-│   │   ├── index.css       # Rich dark UI, glassmorphism, responsive styles
-│   │   └── main.jsx
-│   ├── package.json
-│   └── vite.config.js      # API reverse proxy to port 5000
-│
-├── server/                 # Express backend API
-│   ├── data/
-│   │   ├── initialSeed.js  # Problem Statement pre-seeded data
-│   │   └── db_fallback.json# Persistent datastore
-│   ├── routes/
-│   │   └── api.js          # REST endpoints & business logic validation
-│   ├── db.js               # Dual-engine (MongoDB + Zero-config Embedded Store)
-│   ├── server.js           # Express server entry point
-│   ├── seed.js             # Seed reset utility
-│   └── package.json
-│
-├── .gitignore
-├── README.md
-└── package.json            # Root orchestration script
-```
-
----
-
-## ⚡ Quick Start Guide
-
-### 1. Prerequisites
-- **Node.js** (v18 or higher)
-- **Git**
-- Optional: MongoDB running locally or MongoDB Atlas connection string (falls back to persistent high-performance embedded JSON store if MongoDB is not present).
-
-### 2. Installation
-Clone the repository and install all dependencies:
 ```bash
-git clone https://github.com/Ram-Priyank/coders-event.git
-cd coders-event
-
-# Install dependencies for both server and client
 npm run install-all
+npm run db
+npm run migrate --prefix server
+# Choose a local demonstration password, at least 12 characters:
+read -rsp 'Demo password: ' SEED_PASSWORD; echo
+export SEED_PASSWORD
+npm run seed
+APP_ORIGIN=http://localhost:5173 npm run dev
 ```
 
-### 3. Launch the Application
-Run both backend API and frontend dev server simultaneously:
+Open the Vite development server on port 5173. The API listens on port 5000. The seed is non-destructive: it does nothing when users already exist. It creates `admin`, `priya`, and `arjun` with the password supplied through `SEED_PASSWORD`, ten individually tagged development boards, and twenty bulk USB cables. These are synthetic demonstration identities.
+
+In the prepared cloud instance, the demo password is `DeptTrack-Demo-2026` for all three accounts. This public demonstration password must not be used in production.
+
+`npm run db` starts a loopback-only Docker database. New containers use a named volume and a pinned MySQL image digest. It preserves existing containers and never resets the database. The local database credentials in the helper are public development defaults. Use explicit environment variables for a real deployment.
+
+Environment variables are documented in [.env.example](.env.example). If using dotenv, place the configuration in `server/.env`, since server scripts run from that directory. Do not commit that file. Exported shell variables also work. For npm cache permission errors in cloud environments, use `export npm_config_cache=/workspace/.npm-cache`.
+
+## Implemented workflows
+
+- Username/password authentication, bcrypt hashes, hashed expiring sessions, logout, server-side student/staff/admin permissions, login rate limiting, and origin checks.
+- Inventory definitions and categories; individual asset tags and serials; bulk stock by location and condition; item retirement; asset condition and location changes; receipts, corrections, and transfers with reasons.
+- Student registration and eligibility; hierarchical location creation.
+- Atomic issues with server-calculated 15-day calendar deadlines, issue acknowledgement and printing, student limits, no stock oversell, and unique asset allocation.
+- Full and partial returns, inspection remarks, damaged/maintenance/lost/retired stock segregation, and return receipts in the database.
+- Ownership-scoped student loan history and renewal requests; staff approval/rejection; exactly one 15-day extension from the existing deadline per approval.
+- Dashboard, overdue/upcoming views, search across students/items/programmes/locations, stock and movement reports, CSV export, and print.
+- Atomic stock movements and append-only API audit records, plus actor/operation-scoped idempotency keys for mutation retries.
+- Admin borrowing policy: maximum outstanding units, renewal limit, and whether overdue renewals may be approved.
+
+The business timezone defaults to `Asia/Kolkata`. Initial and renewal periods are 15 days. No backdating is allowed. Overdue approval defaults to disabled. Students cannot cancel a submitted renewal. Staff can restore or retire unissued assets with a reason; stock adjustments do not require a second approver.
+
+## Validation
+
 ```bash
-npm run dev
+npm test                         # MySQL integration, concurrency, authorization, rollback
+npm run build                    # API type check and frontend production build
+npm run lint --prefix client
+# Start the app first; install Chromium once:
+npx --prefix client playwright install chromium
+npm run test:e2e --prefix client
 ```
 
-- **Frontend Client:** `http://localhost:5173`
-- **Backend API:** `http://localhost:5000/api`
+API tests create unique test fixtures in the configured development database and remove them afterwards. Do not point tests at production. Browser tests require seeded demo users and the matching `SEED_PASSWORD` (defaulting to the cloud demonstration password).
 
----
+`npm start` serves the API and built client together on port 5000 after `npm run build`. The development server uses a Vite proxy. Production needs HTTPS, explicit database credentials, an appropriate `APP_ORIGIN`, and `NODE_ENV=production` so session cookies are Secure. Production startup rejects the development database password and production demo seeding is disabled.
 
-## 🎯 Key Application Features
+## Design and remaining deployment work
 
-### 1. Coordinator Workspace
-- **Live Metric Cards:** Total items, available stock, issued units, overdues, damaged/maintenance, and pending renewals.
-- **Issue Desk & Printable Acknowledgement:** Instant issue with automated 15-day due date calculation and printable acknowledgement slip.
-- **Return Inspection Desk:** Records quantity (full or partial) and condition (Usable, Damaged, Maintenance).
-- **Renewal Approvals Desk:** One-click approve (+15 days) or reject with justification remarks.
-- **Asset Registry:** Unique asset ID tracking for hardware development boards, laptops, and specialized test equipment.
-- **Multi-dimensional Reports:** View records student-wise, item-wise, programme-wise, and laboratory-wise with instant export/print.
-- **Stock Adjustments:** Record new stock, physical corrections, or item retirement with mandatory reason logging.
-
-### 2. Student Portal
-- **Role Switcher:** Switch seamlessly between Coordinator and Student view.
-- **My Borrowed Items:** View active loans, asset IDs, and due date countdown badges.
-- **Request 15-Day Renewal:** Submit extension request before due date with project justification.
-- **Live Status Tracker:** Track pending, approved (+15 days), or rejected status with coordinator remarks.
-
----
-
-## 📡 REST API Reference
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Service health and datastore engine status |
-| `GET` | `/api/stats` | Aggregated dashboard metrics |
-| `GET` | `/api/items` | List inventory items with availability |
-| `POST` | `/api/items` | Add new inventory item |
-| `GET` | `/api/assets` | Query individually tracked assets |
-| `POST` | `/api/assets` | Register unique individual asset |
-| `POST` | `/api/issues` | Issue item (validates 15-day rule, stock, registered student) |
-| `POST` | `/api/issues/:id/return` | Record return, partial return & condition inspection |
-| `POST` | `/api/renewals` | Student renewal request submission |
-| `POST` | `/api/renewals/:id/action` | Coordinator approve/reject renewal (+15 calendar days) |
-| `POST` | `/api/stock-adjustments`| Record stock additions, corrections, or retirements |
-| `GET` | `/api/reports` | Multi-pivot reports (`student-wise`, `item-wise`, `programme-wise`, `lab-wise`) |
-| `GET` | `/api/audit-logs` | Filterable chronological transaction audit trail |
-| `POST` | `/api/seed` | Reset database to initial sample dataset |
+See [implementation notes](docs/IMPLEMENTATION.md) for the PDF mapping, current limits, and production checklist. This is a functional core application, not a claim that the PDF's proposed load, availability, backup, or security-audit targets have been certified.

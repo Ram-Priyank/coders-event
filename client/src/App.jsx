@@ -1,2242 +1,1452 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 import {
   Package,
-  Layers,
+  LayoutDashboard,
+  ArrowUpRight,
+  ArrowDownLeft,
+  RefreshCw,
   Users,
-  Clock,
-  CheckCircle2,
-  AlertTriangle,
-  RotateCcw,
+  MapPin,
   FileText,
   ShieldCheck,
-  PlusCircle,
+  Settings,
   Search,
-  Filter,
-  Printer,
-  ChevronRight,
-  TrendingUp,
-  AlertCircle,
-  Building,
-  RefreshCw,
+  Plus,
+  LogOut,
   X,
-  ExternalLink
-} from 'lucide-react';
-
-export default function App() {
-  // Role State: 'COORDINATOR' or 'STUDENT'
-  const [role, setRole] = useState('COORDINATOR');
-  const [activeTab, setActiveTab] = useState('overview'); // overview, issues, returns, renewals, inventory, reports, audit
-  const [activeStudentEnrolment, setActiveStudentEnrolment] = useState('DFIS-2026-001');
-
-  // Data States
-  const [stats, setStats] = useState(null);
-  const [items, setItems] = useState([]);
-  const [assets, setAssets] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [issues, setIssues] = useState([]);
-  const [renewals, setRenewals] = useState([]);
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [reportData, setReportData] = useState([]);
-  const [reportType, setReportType] = useState('student-wise');
-  const [toast, setToast] = useState(null);
-
-  // Modals
-  const [showIssueModal, setShowIssueModal] = useState(false);
-  const [showReturnModal, setShowReturnModal] = useState(false);
-  const [selectedIssueForReturn, setSelectedIssueForReturn] = useState(null);
-  const [showRenewalModal, setShowRenewalModal] = useState(false);
-  const [selectedIssueForRenewal, setSelectedIssueForRenewal] = useState(null);
-  const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [showAddAssetModal, setShowAddAssetModal] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [showStockAdjustmentModal, setShowStockAdjustmentModal] = useState(false);
-  const [activeAckSlip, setActiveAckSlip] = useState(null);
-
-  // Form states
-  const [issueForm, setIssueForm] = useState({
-    studentEnrolment: 'DFIS-2026-001',
-    itemId: '',
-    assetId: '',
-    quantity: 1,
-    purpose: 'Hardware Security Project',
-    issueDate: new Date().toISOString().split('T')[0]
-  });
-
-  const [returnForm, setReturnForm] = useState({
-    returnQuantity: 1,
-    conditionOnReturn: 'Usable',
-    receivingStaff: 'Dr. S. Rao (Coordinator)',
-    remarks: ''
-  });
-
-  const [renewalForm, setRenewalForm] = useState({
-    reason: 'Need extra days to complete protocol debugging'
-  });
-
-  const [adjustmentForm, setAdjustmentForm] = useState({
-    itemId: '',
-    adjustmentType: 'NEW_STOCK',
-    quantity: 5,
-    reason: 'Department grant equipment received',
-    responsibleUser: 'Dr. S. Rao (Coordinator)'
-  });
-
-  const [newItemForm, setNewItemForm] = useState({
-    itemCode: '',
-    name: '',
-    category: 'Development Boards',
-    makeModel: '',
-    description: '',
-    trackingType: 'QUANTITY',
-    totalQuantity: 10,
-    locationId: ''
-  });
-
-  const [newAssetForm, setNewAssetForm] = useState({
-    assetId: '',
-    itemId: '',
-    serialNumber: '',
-    locationId: '',
-    condition: 'Usable'
-  });
-
-  const [newLocationForm, setNewLocationForm] = useState({
-    department: 'Digital Forensics & Information Security',
-    laboratory: 'IoT Security Testing Lab',
-    room: 'Room 305',
-    cupboard: 'Cupboard D',
-    shelf: 'Shelf 1',
-    description: 'Specialized lab space'
-  });
-
-  // Filter & Search states
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState('ALL');
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
-
-  // Fetch all core data
-  const fetchData = async () => {
-    try {
-      const [sRes, iRes, aRes, lRes, stRes, isRes, rRes, audRes] = await Promise.all([
-        fetch('/api/stats'),
-        fetch('/api/items'),
-        fetch('/api/assets'),
-        fetch('/api/locations'),
-        fetch('/api/students'),
-        fetch('/api/issues'),
-        fetch('/api/renewals'),
-        fetch('/api/audit-logs?limit=50')
-      ]);
-
-      if (sRes.ok) setStats(await sRes.json());
-      if (iRes.ok) setItems(await iRes.json());
-      if (aRes.ok) setAssets(await aRes.json());
-      if (lRes.ok) setLocations(await lRes.json());
-      if (stRes.ok) setStudents(await stRes.json());
-      if (isRes.ok) setIssues(await isRes.json());
-      if (rRes.ok) setRenewals(await rRes.json());
-      if (audRes.ok) setAuditLogs(await audRes.json());
-    } catch (err) {
-      console.error('Error fetching data:', err);
-    }
-  };
-
-  const fetchReports = async (type) => {
-    try {
-      const res = await fetch(`/api/reports?type=${type}`);
-      if (res.ok) setReportData(await res.json());
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'reports') {
-      fetchReports(reportType);
-    }
-  }, [activeTab, reportType]);
-
-  // Handle Item Issuance
-  const handleIssueSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/issues', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...issueForm,
-          issuingStaff: 'Dr. S. Rao (Coordinator)'
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to issue item', 'error');
-        return;
-      }
-      showToast(`Item successfully issued! Due in 15 days (${new Date(data.dueDate).toLocaleDateString()})`);
-      setShowIssueModal(false);
-      setActiveAckSlip(data);
-      fetchData();
-    } catch (err) {
-      showToast('Network error during issue request', 'error');
-    }
-  };
-
-  // Handle Item Return
-  const handleReturnSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedIssueForReturn) return;
-    try {
-      const res = await fetch(`/api/issues/${selectedIssueForReturn.id}/return`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(returnForm)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Return failed', 'error');
-        return;
-      }
-      showToast(`Return recorded (${data.conditionRecorded}). Outstanding: ${data.outstandingQuantity}`);
-      setShowReturnModal(false);
-      setSelectedIssueForReturn(null);
-      fetchData();
-    } catch (err) {
-      showToast('Error recording return', 'error');
-    }
-  };
-
-  // Student Requests Renewal
-  const handleRenewalSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedIssueForRenewal) return;
-    try {
-      const res = await fetch('/api/renewals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          issueId: selectedIssueForRenewal.id,
-          reason: renewalForm.reason,
-          requestingStudent: selectedIssueForRenewal.studentName
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Renewal request failed', 'error');
-        return;
-      }
-      showToast('Renewal request submitted! Awaiting Coordinator approval.');
-      setShowRenewalModal(false);
-      setSelectedIssueForRenewal(null);
-      fetchData();
-    } catch (err) {
-      showToast('Network error submitting renewal', 'error');
-    }
-  };
-
-  // Coordinator Renewal Action (Approve / Reject)
-  const handleRenewalAction = async (renewalId, action) => {
-    const remarks = prompt(
-      action === 'APPROVE'
-        ? 'Enter approval remarks (or leave empty):'
-        : 'Enter rejection reason remarks:'
-    );
-    if (remarks === null) return;
-
-    try {
-      const res = await fetch(`/api/renewals/${renewalId}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          approvingStaff: 'Dr. S. Rao (Coordinator)',
-          remarks
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Action failed', 'error');
-        return;
-      }
-      showToast(
-        action === 'APPROVE'
-          ? `Renewal Approved! Due date extended by 15 days to ${new Date(data.issue.dueDate).toLocaleDateString()}`
-          : 'Renewal Rejected. Due date remains unchanged.'
-      );
-      fetchData();
-    } catch (err) {
-      showToast('Error processing renewal action', 'error');
-    }
-  };
-
-  // Add Item
-  const handleAddItem = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newItemForm)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to add item', 'error');
-        return;
-      }
-      showToast(`Added ${data.name} successfully!`);
-      setShowAddItemModal(false);
-      fetchData();
-    } catch (err) {
-      showToast('Network error adding item', 'error');
-    }
-  };
-
-  // Add Individual Asset
-  const handleAddAsset = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newAssetForm)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to register asset', 'error');
-        return;
-      }
-      showToast(`Asset ID ${data.assetId} registered successfully!`);
-      setShowAddAssetModal(false);
-      fetchData();
-    } catch (err) {
-      showToast('Network error registering asset', 'error');
-    }
-  };
-
-  // Add Storage Location
-  const handleAddLocation = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/locations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newLocationForm)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to add location', 'error');
-        return;
-      }
-      showToast(`Storage Location ${data.laboratory} registered!`);
-      setShowLocationModal(false);
-      fetchData();
-    } catch (err) {
-      showToast('Network error adding location', 'error');
-    }
-  };
-
-  // Stock Adjustment
-  const handleStockAdjustment = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/stock-adjustments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adjustmentForm)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Adjustment failed', 'error');
-        return;
-      }
-      showToast('Stock adjustment recorded in audit log!');
-      setShowStockAdjustmentModal(false);
-      fetchData();
-    } catch (err) {
-      showToast('Network error adjusting stock', 'error');
-    }
-  };
-
-  // Reset to initial test specs
-  const handleResetData = async () => {
-    if (!confirm('Reset database to initial specifications test data?')) return;
-    try {
-      await fetch('/api/seed', { method: 'POST' });
-      showToast('Reset to initial specs data completed!');
-      fetchData();
-    } catch (err) {
-      showToast('Reset failed', 'error');
-    }
-  };
-
-  // Overdue calculation
-  const overdueIssues = issues.filter(i => i.isOverdue && i.status !== 'Returned');
-  const currentStudent = students.find(s => s.enrolmentNumber === activeStudentEnrolment);
-  const studentIssues = issues.filter(i => i.studentEnrolment === activeStudentEnrolment);
-
+  Box,
+  ChevronRight,
+  Check,
+  Clock,
+} from "lucide-react";
+const icons = {
+  Overview: LayoutDashboard,
+  Inventory: Package,
+  Loans: ArrowUpRight,
+  Renewals: RefreshCw,
+  Students: Users,
+  Locations: MapPin,
+  Reports: FileText,
+  "Audit trail": ShieldCheck,
+  Settings,
+};
+const date = (d) =>
+  d
+    ? new Date(d + "T00:00:00").toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "—";
+async function api(path, body, key) {
+  const r = await fetch(
+    "/api" + path,
+    body
+      ? {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": key || crypto.randomUUID(),
+          },
+          body: JSON.stringify(body),
+        }
+      : {},
+  );
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+function Badge({ children, tone = "" }) {
+  return <span className={"badge " + tone}>{children}</span>;
+}
+function Empty({
+  message = "Nothing here yet. Records will appear as you work.",
+}) {
   return (
-    <div className="app-container">
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`toast ${toast.type}`}>
-          {toast.type === 'success' && <CheckCircle2 size={18} color="#10b981" />}
-          {toast.type === 'error' && <AlertCircle size={18} color="#ef4444" />}
-          {toast.type === 'info' && <Clock size={18} color="#6366f1" />}
-          <span>{toast.message}</span>
-        </div>
-      )}
-
-      {/* Header Bar */}
-      <header className="header-bar">
-        <div className="header-content">
-          <div className="brand-wrapper">
-            <div className="brand-icon-box">
-              <Package size={22} />
-            </div>
+    <div className="empty">
+      <Box size={32} />
+      <h3>All clear</h3>
+      <p>{message}</p>
+    </div>
+  );
+}
+function Table({ heads, children }) {
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            {heads.map((h) => (
+              <th key={h}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+function csv(name, list) {
+  if (!list.length) return;
+  const keys = Object.keys(list[0]);
+  const escape = (v) =>
+    '"' +
+    String(v ?? "")
+      .replace(/^[=+@-]/, "'$&")
+      .replaceAll('"', '""') +
+    '"';
+  const a = document.createElement("a");
+  const url = URL.createObjectURL(
+    new Blob(
+      [
+        [keys, ...list.map((r) => keys.map((k) => r[k]))]
+          .map((r) => r.map(escape).join(","))
+          .join("\r\n"),
+      ],
+      { type: "text/csv" },
+    ),
+  );
+  a.href = url;
+  a.download = name + ".csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+export default function App() {
+  const [displayDate] = useState(() =>
+    new Date().toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "Asia/Kolkata",
+    }),
+  );
+  const [user, setUser] = useState(null),
+    [loading, setLoading] = useState(true),
+    [data, setData] = useState({}),
+    [tab, setTab] = useState("Overview"),
+    [search, setSearch] = useState(""),
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [modal, setModal] = useState(null),
+    [busy, setBusy] = useState(false),
+    [filter, setFilter] = useState("All"),
+    [receipt, setReceipt] = useState(null);
+  const refresh = async () => {
+    const d = await api("/data");
+    setData(d);
+    setUser(d.user);
+  };
+  useEffect(() => {
+    api("/auth/me")
+      .then((u) => {
+        setUser(u);
+        return refresh();
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+  const logout = async () => {
+    await api("/auth/logout", {});
+    setUser(null);
+    setData({});
+    setTab("Overview");
+    setNotice("");
+  };
+  const staff = user?.role !== "STUDENT";
+  const items = data.items || [],
+    issues = data.issues || [],
+    renewals = data.renewals || [],
+    assets = data.assets || [],
+    balances = data.balances || [],
+    locations = data.locations || [];
+  const active = issues.filter((i) => i.quantity > i.returned),
+    overdue = active.filter((i) => i.overdue_days > 0),
+    pending = renewals.filter((r) => r.status === "PENDING");
+  const matches = (r) =>
+    JSON.stringify(r).toLowerCase().includes(search.toLowerCase());
+  const count = (item, b) =>
+    item.tracking === "BULK"
+      ? balances
+          .filter((x) => x.item_id === item.id && x.bucket === b)
+          .reduce((s, x) => s + x.quantity, 0)
+      : assets.filter((a) => a.item_id === item.id && a.status === b).length;
+  const available = items.reduce((s, i) => s + count(i, "USABLE"), 0),
+    unavailable = items.reduce(
+      (s, i) =>
+        s +
+        ["DAMAGED", "MAINTENANCE", "LOST", "RETIRED"].reduce(
+          (a, b) => a + count(i, b),
+          0,
+        ),
+      0,
+    );
+  const opts = (list, label = "name") =>
+    list.map((x) => ({ value: x.id, label: x[label] }));
+  const field = (name, label, type = "text", options, initial) => ({
+    name,
+    label,
+    type,
+    options,
+    initial,
+  });
+  const open = (title, path, fields, extra = {}) => {
+    setError("");
+    setModal({ title, path, fields, key: crypto.randomUUID(), ...extra });
+  };
+  const itemFields = [
+    field("code", "Item code"),
+    field("name", "Item name"),
+    field("category_id", "Category", "select", opts(data.categories || [])),
+    field("tracking", "Tracking mode", "select", ["BULK", "INDIVIDUAL"]),
+    field("model", "Manufacturer / model"),
+    field("description", "Description"),
+    field("unit", "Base unit", "text", null, "unit"),
+  ];
+  const issue = () =>
+    open("Issue equipment", "/issues", [
+      field(
+        "student_id",
+        "Student",
+        "select",
+        opts((data.students || []).filter((s) => s.active)),
+      ),
+      field("item_id", "Item", "select", opts(items.filter((i) => i.active))),
+      field("location_id", "Location", "select", opts(locations)),
+      field("asset_id", "Individual asset (leave blank for bulk)", "select", [
+        { value: "", label: "Bulk stock — no asset" },
+        ...assets
+          .filter((a) => a.status === "USABLE")
+          .map((a) => ({ value: a.id, label: a.tag })),
+      ]),
+      field("quantity", "Quantity", "number", null, 1),
+      field("purpose", "Purpose"),
+    ]);
+  const returnItem = (i) =>
+    open("Receive a return", "/issues/" + i.id + "/return", [
+      field(
+        "quantity",
+        "Quantity (outstanding: " + (i.quantity - i.returned) + ")",
+        "number",
+        null,
+        i.quantity - i.returned,
+      ),
+      field("condition", "Inspected condition", "select", [
+        "USABLE",
+        "DAMAGED",
+        "MAINTENANCE",
+        "LOST",
+        "RETIRED",
+      ]),
+      field("remarks", "Inspection remarks"),
+    ]);
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const b = Object.fromEntries(new FormData(e.currentTarget));
+      for (const f of modal.fields) {
+        if (f.type === "number") b[f.name] = Number(b[f.name]);
+        if (f.type === "checkbox") b[f.name] = b[f.name] === "on";
+      }
+      if ("asset_id" in b && !b.asset_id) b.asset_id = null;
+      if ("parent_id" in b && !b.parent_id) b.parent_id = null;
+      const r = await api(modal.path, { ...b, ...modal.fixed }, modal.key);
+      if (modal.path === "/issues") setReceipt(r);
+      setModal(null);
+      setNotice("Saved successfully");
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function login(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await api(
+        "/auth/login",
+        Object.fromEntries(new FormData(e.currentTarget)),
+      );
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const loanTable = (list) =>
+    list.length ? (
+      <Table
+        heads={[
+          "Equipment",
+          "Borrower",
+          "Outstanding",
+          "Due date",
+          "Status",
+          "Action",
+        ]}
+      >
+        {list.map((i) => (
+          <tr key={i.id}>
+            <td>
+              <strong>{i.item_name}</strong>
+              <small>
+                {i.tag || "Bulk quantity"} · {i.id.slice(0, 8)}
+              </small>
+            </td>
+            <td>
+              {i.student_name}
+              <small>{i.enrolment}</small>
+            </td>
+            <td>
+              {i.quantity - i.returned}
+              <span className="muted"> / {i.quantity}</span>
+            </td>
+            <td>{date(i.due_on)}</td>
+            <td>
+              <Badge
+                tone={
+                  i.quantity === i.returned
+                    ? "green"
+                    : i.overdue_days > 0
+                      ? "red"
+                      : "blue"
+                }
+              >
+                {i.quantity === i.returned
+                  ? "Returned"
+                  : i.overdue_days > 0
+                    ? `${i.overdue_days}d overdue`
+                    : "On loan"}
+              </Badge>
+            </td>
+            <td>
+              {i.quantity > i.returned &&
+                (staff ? (
+                  <button className="text-button" onClick={() => returnItem(i)}>
+                    Receive return <ArrowDownLeft size={14} />
+                  </button>
+                ) : (
+                  <button
+                    className="text-button"
+                    disabled={renewals.some(
+                      (r) => r.issue_id === i.id && r.status === "PENDING",
+                    )}
+                    onClick={() =>
+                      open(
+                        "Request a renewal",
+                        "/issues/" + i.id + "/renewal",
+                        [field("reason", "Why do you need more time?")],
+                      )
+                    }
+                  >
+                    Request renewal
+                  </button>
+                ))}
+            </td>
+          </tr>
+        ))}
+      </Table>
+    ) : (
+      <Empty />
+    );
+  if (loading) return <div className="loading">Loading DeptTrack…</div>;
+  if (!user)
+    return (
+      <div className="login">
+        <section>
+          <div className="brand">
+            <span className="brand-icon">
+              <Package />
+            </span>
+            DeptTrack
+          </div>
+          <Badge tone="green">DEPARTMENT WORKSPACE</Badge>
+          <h1>
+            Less paperwork.
+            <br />
+            More possibilities.
+          </h1>
+          <p>
+            A clear view of your equipment, every loan,
+            <br />
+            and the people doing great work with it.
+          </p>
+          <div className="login-art">
+            <Package size={90} />
             <div>
-              <div className="brand-title">
-                DeptTrack
-                <span className="badge badge-primary" style={{ fontSize: '0.65rem' }}>
-                  v1.0 • MERN
-                </span>
-              </div>
-              <div className="brand-subtitle">
-                Department Inventory & Student Item Issue Management
-              </div>
+              <strong>Every item. Accounted for.</strong>
+              <p>Inventory · Lending · Accountability</p>
             </div>
           </div>
-
-          <div className="header-controls">
-            {/* Role Switcher */}
-            <div className="role-switcher">
-              <button
-                className={`role-btn ${role === 'COORDINATOR' ? 'active' : ''}`}
-                onClick={() => setRole('COORDINATOR')}
-              >
-                <ShieldCheck size={14} />
-                Coordinator
-              </button>
-              <button
-                className={`role-btn ${role === 'STUDENT' ? 'active' : ''}`}
-                onClick={() => setRole('STUDENT')}
-              >
-                <Users size={14} />
-                Student Portal
-              </button>
+        </section>
+        <form onSubmit={login}>
+          <h2>Welcome back</h2>
+          <p className="muted">Sign in to your department workspace.</p>
+          <label>
+            Username
+            <input name="username" autoComplete="username" required autoFocus />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          {error && (
+            <div className="error" role="alert">
+              {error}
             </div>
-
-            {role === 'STUDENT' && (
-              <select
-                className="select-filter"
-                value={activeStudentEnrolment}
-                onChange={(e) => setActiveStudentEnrolment(e.target.value)}
-              >
-                {students.map((st) => (
-                  <option key={st.enrolmentNumber} value={st.enrolmentNumber}>
-                    {st.name} ({st.enrolmentNumber})
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={handleResetData}
-              title="Reset to problem statement sample scenario"
-            >
-              <RefreshCw size={13} />
-              Reset Demo
+          )}
+          <button className="primary" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"} <ArrowUpRight size={18} />
+          </button>
+          <small>Access is managed by your department administrator.</small>
+        </form>
+      </div>
+    );
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-icon">
+            <Package size={23} />
+          </span>
+          DeptTrack<span className="brand-dot">.</span>
+        </div>
+        <div className="workspace">
+          <span className="avatar">DF</span>
+          <div>
+            <strong>Digital Forensics</strong>
+            <small>Department workspace</small>
+          </div>
+        </div>
+        <p className="nav-label">WORKSPACE</p>
+        <nav>
+          {(staff ? Object.keys(icons) : ["Overview", "Loans", "Renewals"]).map(
+            (t) => {
+              const Icon = icons[t];
+              return (
+                <button
+                  key={t}
+                  aria-label={t}
+                  className={tab === t ? "selected" : ""}
+                  onClick={() => {
+                    setTab(t);
+                    setSearch("");
+                    setFilter("All");
+                    setError("");
+                  }}
+                >
+                  <Icon size={19} />
+                  {t}
+                  {t === "Renewals" && pending.length > 0 && (
+                    <span className="nav-count">{pending.length}</span>
+                  )}
+                </button>
+              );
+            },
+          )}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="live">
+            <span /> MySQL connected
+          </div>
+          <div className="profile">
+            <span className="avatar purple">
+              {user.name
+                .split(" ")
+                .map((s) => s[0])
+                .slice(0, 2)
+                .join("")}
+            </span>
+            <div>
+              <strong>{user.name}</strong>
+              <small>{user.role.toLowerCase()}</small>
+            </div>
+            <button aria-label="Sign out" onClick={logout}>
+              <LogOut size={18} />
             </button>
           </div>
         </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="main-wrapper">
-        {/* Overdue Banner Notification (Visible if any overdue exists) */}
-        {overdueIssues.length > 0 && (
-          <div className="alert-banner">
-            <AlertTriangle size={22} color="#ef4444" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div style={{ flex: 1 }}>
-              <div className="alert-banner-title">
-                Attention: {overdueIssues.length} Item(s) Currently Overdue Beyond 15-Day Limit
-              </div>
-              <div className="alert-banner-desc">
-                {overdueIssues.map((oi) => (
-                  <div key={oi.id} style={{ marginTop: '0.2rem' }}>
-                    • <strong>{oi.itemName}</strong> {oi.assetId ? `(Asset ${oi.assetId})` : ''} issued to{' '}
-                    <strong>{oi.studentName} ({oi.studentEnrolment})</strong> was due on{' '}
-                    <strong>{new Date(oi.dueDate).toLocaleDateString()}</strong> and is overdue by{' '}
-                    <span className="badge badge-danger">{oi.overdueDays} day(s)</span>.
+      </aside>
+      <main>
+        <header>
+          <div className="breadcrumb">
+            Workspace <ChevronRight size={14} /> <span>{tab}</span>
+          </div>
+          <div className="header-right">
+            <button
+              className="mobile-signout"
+              aria-label="Sign out"
+              onClick={logout}
+            >
+              <LogOut size={17} />
+            </button>
+            <span className="date">{displayDate}</span>
+            <Badge tone="green">
+              {staff ? "Staff workspace" : "Student portal"}
+            </Badge>
+          </div>
+        </header>
+        <div className="content">
+          <div className="page-heading">
+            <div>
+              <p className="eyebrow">DEPARTMENT INVENTORY</p>
+              <h1>{tab === "Overview" ? "Everything in its place." : tab}</h1>
+              <p className="muted">
+                {tab === "Overview"
+                  ? `Welcome back, ${user.name}. Here’s what’s happening in your department.`
+                  : {
+                      Inventory:
+                        "Manage equipment, individual assets, and stock across your locations.",
+                      Loans: "Track every handover, deadline, and return.",
+                      Renewals: "A little more time, with the right approval.",
+                      Students:
+                        "Registered borrowers and their department profiles.",
+                      Locations: "Know where your equipment belongs.",
+                      Reports:
+                        "Your operational records, ready to review and export.",
+                      "Audit trail":
+                        "An accountable record of every important change.",
+                      Settings:
+                        "Configure borrowing limits and renewal eligibility.",
+                    }[tab]}
+              </p>
+            </div>
+            {staff && (
+              <button className="primary" onClick={issue}>
+                <Plus size={18} /> Issue equipment
+              </button>
+            )}
+          </div>
+          {error && !modal && (
+            <div className="error" role="alert">
+              {error}
+            </div>
+          )}
+          {notice && (
+            <div className="notice" role="status">
+              <Check size={17} />
+              {notice}
+              <button
+                aria-label="Dismiss notification"
+                onClick={() => setNotice("")}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          {tab === "Overview" && (
+            <>
+              <div className="stats">
+                {[
+                  [
+                    staff ? "Available units" : "My active loans",
+                    staff ? available : active.length,
+                    Package,
+                    "Ready for your next project",
+                    "mint",
+                  ],
+                  [
+                    "On loan",
+                    active.reduce((n, i) => n + i.quantity - i.returned, 0),
+                    ArrowUpRight,
+                    "Across active issue records",
+                    "lavender",
+                  ],
+                  [
+                    "Overdue loans",
+                    overdue.length,
+                    Clock,
+                    "Need a little attention",
+                    "peach",
+                  ],
+                  [
+                    "Pending renewals",
+                    pending.length,
+                    RefreshCw,
+                    "Awaiting a coordinator decision",
+                    "yellow",
+                  ],
+                ].map(([title, n, Icon, caption, color]) => (
+                  <div className="stat" key={title}>
+                    <div className={"stat-icon " + color}>
+                      <Icon size={21} />
+                    </div>
+                    <span>{title}</span>
+                    <strong>{n}</strong>
+                    <small>{caption}</small>
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* COORDINATOR DASHBOARD VIEW                                */}
-        {/* ======================================================== */}
-        {role === 'COORDINATOR' && (
-          <div>
-            {/* Top Metric Cards */}
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-header">
-                  <span className="stat-label">Total Inventory</span>
-                  <div className="stat-icon" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>
-                    <Package size={16} />
-                  </div>
-                </div>
-                <div className="stat-val">{stats?.totalQuantity ?? 0}</div>
-                <div className="stat-meta">Items across {stats?.storageLocationsCount ?? 0} storage locations</div>
-              </div>
-
-              <div className="stat-card">
-                <div className="stat-header">
-                  <span className="stat-label">Available Stock</span>
-                  <div className="stat-icon" style={{ background: 'var(--success-light)', color: 'var(--success)' }}>
-                    <CheckCircle2 size={16} />
-                  </div>
-                </div>
-                <div className="stat-val" style={{ color: 'var(--success)' }}>
-                  {stats?.availableQuantity ?? 0}
-                </div>
-                <div className="stat-meta">Usable condition & ready for issue</div>
-              </div>
-
-              <div className="stat-card">
-                <div className="stat-header">
-                  <span className="stat-label">Issued to Students</span>
-                  <div className="stat-icon" style={{ background: 'var(--accent-cyan-light)', color: 'var(--accent-cyan)' }}>
-                    <Users size={16} />
-                  </div>
-                </div>
-                <div className="stat-val" style={{ color: 'var(--accent-cyan)' }}>
-                  {stats?.issuedQuantity ?? 0}
-                </div>
-                <div className="stat-meta">Active loans (15-day policy)</div>
-              </div>
-
-              <div className="stat-card">
-                <div className="stat-header">
-                  <span className="stat-label">Overdue Items</span>
-                  <div className="stat-icon" style={{ background: 'var(--danger-light)', color: 'var(--danger)' }}>
-                    <Clock size={16} />
-                  </div>
-                </div>
-                <div className="stat-val" style={{ color: stats?.overdueCount > 0 ? 'var(--danger)' : '#fff' }}>
-                  {stats?.overdueCount ?? 0}
-                </div>
-                <div className="stat-meta">Passed 15-day return threshold</div>
-              </div>
-
-              <div className="stat-card">
-                <div className="stat-header">
-                  <span className="stat-label">Pending Renewals</span>
-                  <div className="stat-icon" style={{ background: 'var(--warning-light)', color: 'var(--warning)' }}>
-                    <RotateCcw size={16} />
-                  </div>
-                </div>
-                <div className="stat-val" style={{ color: 'var(--warning)' }}>
-                  {stats?.pendingRenewalsCount ?? 0}
-                </div>
-                <div className="stat-meta">Awaiting coordinator decision</div>
-              </div>
-            </div>
-
-            {/* Coordinator Navigation Tabs */}
-            <div className="tabs-nav">
-              <button
-                className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
-                onClick={() => setActiveTab('overview')}
-              >
-                <Layers size={16} />
-                Overview & Items
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'issues' ? 'active' : ''}`}
-                onClick={() => setActiveTab('issues')}
-              >
-                <FileText size={16} />
-                Active Issues & Loan Desk
-                <span className="tab-badge">{issues.length}</span>
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'renewals' ? 'active' : ''}`}
-                onClick={() => setActiveTab('renewals')}
-              >
-                <RotateCcw size={16} />
-                Renewal Requests
-                {stats?.pendingRenewalsCount > 0 && (
-                  <span className="badge badge-warning">{stats.pendingRenewalsCount}</span>
-                )}
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'assets' ? 'active' : ''}`}
-                onClick={() => setActiveTab('assets')}
-              >
-                <ShieldCheck size={16} />
-                Asset Registry (Individual)
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'locations' ? 'active' : ''}`}
-                onClick={() => setActiveTab('locations')}
-              >
-                <Building size={16} />
-                Storage Locations
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`}
-                onClick={() => setActiveTab('reports')}
-              >
-                <TrendingUp size={16} />
-                Reports & Analytics
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
-                onClick={() => setActiveTab('audit')}
-              >
-                <Clock size={16} />
-                Audit Trail
-              </button>
-            </div>
-
-            {/* TAB: OVERVIEW & INVENTORY */}
-            {activeTab === 'overview' && (
-              <div className="section-card">
-                <div className="section-header">
-                  <div>
-                    <h2 className="section-title">Department Inventory Repository</h2>
-                    <p className="section-desc">
-                      Distinguishes individually tracked assets (e.g., Laptops, Development Boards) from quantity-based items (e.g., Cables, Adapters).
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => {
-                        setIssueForm({
-                          ...issueForm,
-                          itemId: items[0]?.id || '',
-                          assetId: ''
-                        });
-                        setShowIssueModal(true);
-                      }}
-                    >
-                      <PlusCircle size={15} />
-                      Issue Item to Student
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => setShowAddItemModal(true)}>
-                      <PlusCircle size={15} />
-                      New Inventory Item
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => setShowStockAdjustmentModal(true)}>
-                      <TrendingUp size={15} />
-                      Stock Adjustment
-                    </button>
-                  </div>
-                </div>
-
-                {/* Filter and Search Bar */}
-                <div className="filter-bar">
-                  <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
-                    <input
-                      type="text"
-                      className="input-search"
-                      placeholder="Search items by code, name, make/model..."
-                      style={{ width: '100%', paddingLeft: '2rem' }}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <Search
-                      size={14}
-                      color="var(--text-muted)"
-                      style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }}
-                    />
-                  </div>
-
-                  <select
-                    className="select-filter"
-                    value={filterCategory}
-                    onChange={(e) => setFilterCategory(e.target.value)}
-                  >
-                    <option value="ALL">All Tracking Types</option>
-                    <option value="INDIVIDUAL">Individually Tracked Assets</option>
-                    <option value="QUANTITY">Quantity-Based Items</option>
-                  </select>
-                </div>
-
-                {/* Inventory Table */}
-                <div className="table-responsive">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Code & Name</th>
-                        <th>Category / Model</th>
-                        <th>Tracking Type</th>
-                        <th>Total Stock</th>
-                        <th>Available</th>
-                        <th>Issued</th>
-                        <th>Condition / Status</th>
-                        <th>Location</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items
-                        .filter((i) => {
-                          const matchesSearch =
-                            i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            i.itemCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            i.category.toLowerCase().includes(searchQuery.toLowerCase());
-                          const matchesType =
-                            filterCategory === 'ALL' || i.trackingType === filterCategory;
-                          return matchesSearch && matchesType;
-                        })
-                        .map((item) => (
-                          <tr key={item.id}>
-                            <td>
-                              <div style={{ fontWeight: 600 }}>{item.name}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                {item.itemCode}
-                              </div>
-                            </td>
-                            <td>
-                              <div>{item.category}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {item.makeModel}
-                              </div>
-                            </td>
-                            <td>
-                              {item.trackingType === 'INDIVIDUAL' ? (
-                                <span className="badge badge-primary">Individually Tracked</span>
-                              ) : (
-                                <span className="badge badge-neutral">Quantity-Based</span>
-                              )}
-                            </td>
-                            <td style={{ fontWeight: 600 }}>{item.totalQuantity}</td>
-                            <td>
-                              <span
-                                className={`badge ${
-                                  item.availableQuantity > 0 ? 'badge-success' : 'badge-danger'
-                                }`}
-                              >
-                                {item.availableQuantity} Usable
-                              </span>
-                            </td>
-                            <td>{item.issuedQuantity}</td>
-                            <td>
-                              {item.maintenanceQuantity > 0 || item.damagedQuantity > 0 ? (
-                                <span className="badge badge-warning">
-                                  {item.maintenanceQuantity} Maint / {item.damagedQuantity} Dmg
-                                </span>
-                              ) : (
-                                <span className="badge badge-success">All Usable</span>
-                              )}
-                            </td>
-                            <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                              {item.locationDetails}
-                            </td>
-                            <td>
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => {
-                                  setIssueForm({
-                                    ...issueForm,
-                                    itemId: item.id,
-                                    assetId: ''
-                                  });
-                                  setShowIssueModal(true);
-                                }}
-                                disabled={item.availableQuantity <= 0}
-                              >
-                                Issue
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: ACTIVE ISSUES & LOAN DESK */}
-            {activeTab === 'issues' && (
-              <div className="section-card">
-                <div className="section-header">
-                  <div>
-                    <h2 className="section-title">Active Item Issues & Return Desk</h2>
-                    <p className="section-desc">
-                      Enforcing 15-day calendar return deadline. Partial returns record unreturned quantity as outstanding.
-                    </p>
-                  </div>
-                  <button className="btn btn-primary" onClick={() => setShowIssueModal(true)}>
-                    <PlusCircle size={15} />
-                    Issue Item
-                  </button>
-                </div>
-
-                <div className="table-responsive">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Issue ID / Ack</th>
-                        <th>Student Details</th>
-                        <th>Item / Asset</th>
-                        <th>Issued / Outstanding</th>
-                        <th>Issue Date</th>
-                        <th>Due Date (15d Rule)</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {issues.map((iss) => (
-                        <tr key={iss.id}>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{iss.id}</div>
-                            <div style={{ fontSize: '0.725rem', color: 'var(--primary)' }}>
-                              {iss.acknowledgementNumber}
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 500 }}>{iss.studentName}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                              {iss.studentEnrolment} • {iss.programme}
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 500 }}>{iss.itemName}</div>
-                            {iss.assetId && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>
-                                Asset ID: <strong>{iss.assetId}</strong>
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <div>
-                              Outstanding: <strong>{iss.outstandingQuantity}</strong> / {iss.quantity}
-                            </div>
-                          </td>
-                          <td style={{ fontSize: '0.8rem' }}>
-                            {new Date(iss.issueDate).toLocaleDateString()}
-                          </td>
-                          <td style={{ fontSize: '0.8rem' }}>
-                            <strong>{new Date(iss.dueDate).toLocaleDateString()}</strong>
-                            {iss.isOverdue && (
-                              <div style={{ color: 'var(--danger)', fontSize: '0.725rem', fontWeight: 600 }}>
-                                Overdue by {iss.overdueDays} day(s)
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            {iss.status === 'Returned' && (
-                              <span className="badge badge-success">Returned</span>
-                            )}
-                            {iss.status === 'PartialReturned' && (
-                              <span className="badge badge-warning">Partial Returned</span>
-                            )}
-                            {iss.status === 'Active' && !iss.isOverdue && (
-                              <span className="badge badge-primary">Active</span>
-                            )}
-                            {iss.isOverdue && iss.status !== 'Returned' && (
-                              <span className="badge badge-danger">Overdue</span>
-                            )}
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: '0.4rem' }}>
-                              {iss.status !== 'Returned' && (
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => {
-                                    setSelectedIssueForReturn(iss);
-                                    setReturnForm({
-                                      returnQuantity: iss.outstandingQuantity,
-                                      conditionOnReturn: 'Usable',
-                                      receivingStaff: 'Dr. S. Rao (Coordinator)',
-                                      remarks: ''
-                                    });
-                                    setShowReturnModal(true);
-                                  }}
-                                >
-                                  Process Return
-                                </button>
-                              )}
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => setActiveAckSlip(iss)}
-                                title="Print / View Acknowledgement"
-                              >
-                                <Printer size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: RENEWAL REQUESTS */}
-            {activeTab === 'renewals' && (
-              <div className="section-card">
-                <div className="section-header">
-                  <div>
-                    <h2 className="section-title">Renewal Requests Management</h2>
-                    <p className="section-desc">
-                      Rule: Submitting a request alone does NOT extend the due date. Coordinator approval extends due date by +15 calendar days.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="table-responsive">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Req ID</th>
-                        <th>Student</th>
-                        <th>Item / Asset</th>
-                        <th>Request Date</th>
-                        <th>Current Due</th>
-                        <th>Proposed Due (+15d)</th>
-                        <th>Student Reason</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {renewals.map((ren) => (
-                        <tr key={ren.id}>
-                          <td>{ren.id}</td>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{ren.studentName}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                              {ren.studentEnrolment}
-                            </div>
-                          </td>
-                          <td>{ren.itemName}</td>
-                          <td>{new Date(ren.requestDate).toLocaleDateString()}</td>
-                          <td>{new Date(ren.currentDueDate).toLocaleDateString()}</td>
-                          <td style={{ color: 'var(--success)', fontWeight: 600 }}>
-                            {new Date(ren.proposedDueDate).toLocaleDateString()}
-                          </td>
-                          <td style={{ maxWidth: '240px', fontSize: '0.8rem' }}>{ren.reason}</td>
-                          <td>
-                            {ren.status === 'Pending' && (
-                              <span className="badge badge-warning">Pending Approval</span>
-                            )}
-                            {ren.status === 'Approved' && (
-                              <span className="badge badge-success">Approved (+15d)</span>
-                            )}
-                            {ren.status === 'Rejected' && (
-                              <span className="badge badge-danger">Rejected</span>
-                            )}
-                          </td>
-                          <td>
-                            {ren.status === 'Pending' ? (
-                              <div style={{ display: 'flex', gap: '0.3rem' }}>
-                                <button
-                                  className="btn btn-success btn-sm"
-                                  onClick={() => handleRenewalAction(ren.id, 'APPROVE')}
-                                >
-                                  Approve (+15d)
-                                </button>
-                                <button
-                                  className="btn btn-danger btn-sm"
-                                  onClick={() => handleRenewalAction(ren.id, 'REJECT')}
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {ren.remarks ? `Remarks: ${ren.remarks}` : 'Processed'}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: ASSETS REGISTRY */}
-            {activeTab === 'assets' && (
-              <div className="section-card">
-                <div className="section-header">
-                  <div>
-                    <h2 className="section-title">Individually Tracked Assets</h2>
-                    <p className="section-desc">
-                      Mandatory rule: Unique asset ID assigned. Cannot be checked out to more than one student concurrently.
-                    </p>
-                  </div>
-                  <button className="btn btn-primary" onClick={() => setShowAddAssetModal(true)}>
-                    <PlusCircle size={15} />
-                    Register New Asset
-                  </button>
-                </div>
-
-                <div className="table-responsive">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Unique Asset ID</th>
-                        <th>Item Name</th>
-                        <th>Serial Number</th>
-                        <th>Condition</th>
-                        <th>Loan Status</th>
-                        <th>Current Holder</th>
-                        <th>Storage Location</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {assets.map((ast) => (
-                        <tr key={ast.id}>
-                          <td style={{ fontWeight: 700, color: 'var(--accent-cyan)' }}>
-                            {ast.assetId}
-                          </td>
-                          <td>{ast.itemName}</td>
-                          <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            {ast.serialNumber}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                ast.condition === 'Usable'
-                                  ? 'badge-success'
-                                  : ast.condition === 'Damaged'
-                                  ? 'badge-danger'
-                                  : 'badge-warning'
-                              }`}
-                            >
-                              {ast.condition}
-                            </span>
-                          </td>
-                          <td>
-                            {ast.status === 'Available' && (
-                              <span className="badge badge-success">Available</span>
-                            )}
-                            {ast.status === 'Issued' && (
-                              <span className="badge badge-warning">Issued</span>
-                            )}
-                            {ast.status !== 'Available' && ast.status !== 'Issued' && (
-                              <span className="badge badge-danger">{ast.status}</span>
-                            )}
-                          </td>
-                          <td>
-                            {ast.currentStudentEnrolment ? (
-                              <span style={{ fontWeight: 600 }}>{ast.currentStudentEnrolment}</span>
-                            ) : (
-                              <span style={{ color: 'var(--text-muted)' }}>— In Lab —</span>
-                            )}
-                          </td>
-                          <td style={{ fontSize: '0.8rem' }}>{ast.locationDetails}</td>
-                          <td>
-                            {ast.condition !== 'Usable' && ast.status !== 'Issued' && (
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={async () => {
-                                  await fetch(`/api/assets/${ast.id}/status`, {
-                                    method: 'PUT',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                      condition: 'Usable',
-                                      status: 'Available',
-                                      responsibleUser: 'Dr. S. Rao (Coordinator)'
-                                    })
-                                  });
-                                  showToast(`Asset ${ast.assetId} marked as Usable and Available!`);
-                                  fetchData();
-                                }}
-                              >
-                                Mark Restored
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: STORAGE LOCATIONS */}
-            {activeTab === 'locations' && (
-              <div className="section-card">
-                <div className="section-header">
-                  <div>
-                    <h2 className="section-title">Department Storage Locations</h2>
-                    <p className="section-desc">
-                      Tracks departments, laboratories, rooms, cupboards, and shelves for physical audits.
-                    </p>
-                  </div>
-                  <button className="btn btn-primary" onClick={() => setShowLocationModal(true)}>
-                    <PlusCircle size={15} />
-                    Add Location
-                  </button>
-                </div>
-
-                <div className="table-responsive">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Location ID</th>
-                        <th>Laboratory</th>
-                        <th>Department</th>
-                        <th>Room</th>
-                        <th>Cupboard / Shelf</th>
-                        <th>Description</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {locations.map((loc) => (
-                        <tr key={loc.id}>
-                          <td style={{ fontWeight: 600 }}>{loc.id}</td>
-                          <td style={{ fontWeight: 600 }}>{loc.laboratory}</td>
-                          <td>{loc.department}</td>
-                          <td>{loc.room}</td>
-                          <td>
-                            {loc.cupboard} / {loc.shelf}
-                          </td>
-                          <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            {loc.description}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: REPORTS */}
-            {activeTab === 'reports' && (
-              <div className="section-card">
-                <div className="section-header">
-                  <div>
-                    <h2 className="section-title">Inventory Reports & Analysis</h2>
-                    <p className="section-desc">
-                      Comprehensive breakdown: student-wise, item-wise, programme-wise, and laboratory-wise.
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <select
-                      className="select-filter"
-                      value={reportType}
-                      onChange={(e) => setReportType(e.target.value)}
-                    >
-                      <option value="student-wise">Student-Wise Report</option>
-                      <option value="item-wise">Item-Wise Report</option>
-                      <option value="programme-wise">Programme-Wise Report</option>
-                      <option value="lab-wise">Laboratory-Wise Report</option>
-                    </select>
-                    <button className="btn btn-secondary" onClick={() => window.print()}>
-                      <Printer size={15} />
-                      Export / Print
-                    </button>
-                  </div>
-                </div>
-
-                <div className="table-responsive">
-                  <table>
-                    <thead>
-                      {reportType === 'student-wise' && (
-                        <tr>
-                          <th>Enrolment #</th>
-                          <th>Student Name</th>
-                          <th>Programme & Semester</th>
-                          <th>Lifetime Issues</th>
-                          <th>Current Outstanding Units</th>
-                          <th>Overdue Count</th>
-                        </tr>
-                      )}
-                      {reportType === 'item-wise' && (
-                        <tr>
-                          <th>Item Code</th>
-                          <th>Name</th>
-                          <th>Category</th>
-                          <th>Total Stock</th>
-                          <th>Available</th>
-                          <th>Issued</th>
-                          <th>Damaged/Maint</th>
-                          <th>Assigned Lab</th>
-                        </tr>
-                      )}
-                      {reportType === 'programme-wise' && (
-                        <tr>
-                          <th>Programme</th>
-                          <th>Registered Students</th>
-                          <th>Total Issues Record</th>
-                          <th>Active Borrowed Units</th>
-                        </tr>
-                      )}
-                      {reportType === 'lab-wise' && (
-                        <tr>
-                          <th>Laboratory</th>
-                          <th>Department</th>
-                          <th>Room / Cupboard</th>
-                          <th>Distinct Items</th>
-                          <th>Total Physical Units</th>
-                          <th>Available Units</th>
-                          <th>Issued Units</th>
-                        </tr>
-                      )}
-                    </thead>
-                    <tbody>
-                      {reportData.map((row, idx) => (
-                        <tr key={idx}>
-                          {reportType === 'student-wise' && (
-                            <>
-                              <td style={{ fontWeight: 600 }}>{row.enrolmentNumber}</td>
-                              <td>{row.studentName}</td>
-                              <td>
-                                {row.programme} ({row.semester})
-                              </td>
-                              <td>{row.totalIssuesEver}</td>
-                              <td style={{ fontWeight: 600 }}>{row.activeOutstanding}</td>
-                              <td>
-                                {row.overdueCount > 0 ? (
-                                  <span className="badge badge-danger">{row.overdueCount} Overdue</span>
-                                ) : (
-                                  <span className="badge badge-success">Clean</span>
-                                )}
-                              </td>
-                            </>
-                          )}
-                          {reportType === 'item-wise' && (
-                            <>
-                              <td style={{ fontWeight: 600 }}>{row.itemCode}</td>
-                              <td>{row.name}</td>
-                              <td>{row.category}</td>
-                              <td>{row.total}</td>
-                              <td style={{ color: 'var(--success)' }}>{row.available}</td>
-                              <td style={{ color: 'var(--primary)' }}>{row.issued}</td>
-                              <td>{row.maintenance + row.damaged}</td>
-                              <td>{row.location}</td>
-                            </>
-                          )}
-                          {reportType === 'programme-wise' && (
-                            <>
-                              <td style={{ fontWeight: 600 }}>{row.programme}</td>
-                              <td>{row.totalStudents}</td>
-                              <td>{row.totalIssues}</td>
-                              <td>{row.activeBorrowedUnits}</td>
-                            </>
-                          )}
-                          {reportType === 'lab-wise' && (
-                            <>
-                              <td style={{ fontWeight: 600 }}>{row.laboratory}</td>
-                              <td>{row.department}</td>
-                              <td>
-                                {row.room} ({row.cupboard})
-                              </td>
-                              <td>{row.itemsCount}</td>
-                              <td>{row.totalUnits}</td>
-                              <td style={{ color: 'var(--success)' }}>{row.availableUnits}</td>
-                              <td style={{ color: 'var(--primary)' }}>{row.issuedUnits}</td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: AUDIT TRAIL */}
-            {activeTab === 'audit' && (
-              <div className="section-card">
-                <div className="section-header">
-                  <div>
-                    <h2 className="section-title">System Audit Log & Traceability</h2>
-                    <p className="section-desc">
-                      Mandatory rule: Every issue, return, renewal, and stock adjustment is permanently recorded with responsible user and timestamp.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="table-responsive">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Timestamp</th>
-                        <th>Action</th>
-                        <th>Responsible User</th>
-                        <th>Audit Details</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditLogs.map((log) => (
-                        <tr key={log.id}>
-                          <td style={{ fontSize: '0.785rem', color: 'var(--text-secondary)' }}>
-                            {new Date(log.timestamp).toLocaleString()}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                log.action.includes('RETURN')
-                                  ? 'badge-success'
-                                  : log.action.includes('ISSUE')
-                                  ? 'badge-primary'
-                                  : log.action.includes('RENEW')
-                                  ? 'badge-warning'
-                                  : 'badge-neutral'
-                              }`}
-                            >
-                              {log.action}
-                            </span>
-                          </td>
-                          <td style={{ fontWeight: 600 }}>{log.responsibleUser}</td>
-                          <td style={{ fontSize: '0.825rem' }}>{log.details}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* STUDENT PORTAL VIEW                                       */}
-        {/* ======================================================== */}
-        {role === 'STUDENT' && (
-          <div>
-            {/* Student Header Card */}
-            <div className="section-card" style={{ marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Users size={22} color="var(--primary)" />
-                    <h2 className="section-title">{currentStudent?.name}</h2>
-                    <span className="badge badge-primary">{currentStudent?.enrolmentNumber}</span>
-                  </div>
-                  <div className="section-desc" style={{ marginTop: '0.35rem' }}>
-                    {currentStudent?.programme} • {currentStudent?.semester} • Contact: {currentStudent?.contactNumber}
-                  </div>
-                </div>
-                <div>
-                  <div className="stat-card" style={{ padding: '0.75rem 1.25rem', minWidth: '160px' }}>
-                    <div className="stat-label">Active Loans</div>
-                    <div className="stat-val" style={{ fontSize: '1.4rem' }}>
-                      {studentIssues.filter((i) => i.status !== 'Returned').length}
+              <div className="overview-grid">
+                <section className="panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2>Active loans</h2>
+                      <p>Equipment currently out with students</p>
                     </div>
+                    <button
+                      className="text-button"
+                      onClick={() => setTab("Loans")}
+                    >
+                      View all <ArrowUpRight size={16} />
+                    </button>
                   </div>
-                </div>
+                  {loanTable(active.slice(0, 5))}
+                </section>
+                <section className="panel snapshot">
+                  <div className="panel-heading">
+                    <h2>
+                      {staff ? "Stock at a glance" : "Your borrowing guide"}
+                    </h2>
+                  </div>
+                  {staff ? (
+                    <>
+                      <div
+                        className="donut"
+                        style={{
+                          "--portion": `${(available / Math.max(available + unavailable + active.reduce((n, i) => n + i.quantity - i.returned, 0), 1)) * 100}%`,
+                        }}
+                      >
+                        <div>
+                          <strong>{available}</strong>
+                          <small>available units</small>
+                        </div>
+                      </div>
+                      <div className="legend">
+                        <span>
+                          <i className="mint" />
+                          Available
+                        </span>
+                        <strong>{available}</strong>
+                      </div>
+                      <div className="legend">
+                        <span>
+                          <i className="lavender" />
+                          On loan
+                        </span>
+                        <strong>
+                          {active.reduce(
+                            (n, i) => n + i.quantity - i.returned,
+                            0,
+                          )}
+                        </strong>
+                      </div>
+                      <div className="legend">
+                        <span>
+                          <i className="peach" />
+                          Other conditions
+                        </span>
+                        <strong>{unavailable}</strong>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="guide">
+                      <Clock size={36} />
+                      <h3>15 days to make it happen.</h3>
+                      <p>
+                        Every loan starts with 15 calendar days. Need longer?
+                        Request a renewal. Your due date changes only after
+                        approval.
+                      </p>
+                    </div>
+                  )}
+                </section>
               </div>
-            </div>
-
-            {/* Student's Issued Items */}
-            <div className="section-card">
-              <div className="section-header">
+              <section className="tip">
+                <ShieldCheck size={26} />
                 <div>
-                  <h2 className="section-title">My Issued Items & Due Dates</h2>
-                  <p className="section-desc">
-                    Must return or request renewal within 15 days of issue date.
+                  <strong>Small details. Complete accountability.</strong>
+                  <p>
+                    Every issue, return, and approval is recorded with its
+                    responsible staff member.
                   </p>
                 </div>
+                <Badge>15-day loan policy</Badge>
+              </section>
+            </>
+          )}
+          {tab !== "Overview" && tab !== "Settings" && (
+            <div className="toolbar">
+              <div className="search">
+                <Search size={17} />
+                <input
+                  aria-label="Search records"
+                  placeholder={"Search " + tab.toLowerCase() + "…"}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
-
-              <div className="table-responsive">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Item / Asset</th>
-                      <th>Quantity Outstanding</th>
-                      <th>Issue Date</th>
-                      <th>Due Date (15-Day Limit)</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+              <div className="actions">
+                {tab === "Inventory" && (
+                  <>
+                    <button
+                      onClick={() =>
+                        open("Add inventory item", "/items", itemFields)
+                      }
+                    >
+                      <Plus size={16} />
+                      New item
+                    </button>
+                    <button
+                      onClick={() =>
+                        open("Register individual asset", "/assets", [
+                          field(
+                            "item_id",
+                            "Item",
+                            "select",
+                            opts(
+                              items.filter((i) => i.tracking === "INDIVIDUAL"),
+                            ),
+                          ),
+                          field(
+                            "location_id",
+                            "Location",
+                            "select",
+                            opts(locations),
+                          ),
+                          field("tag", "Unique asset tag"),
+                          field("serial", "Serial number"),
+                        ])
+                      }
+                    >
+                      Add asset
+                    </button>
+                    <button
+                      onClick={() =>
+                        open("Adjust bulk stock", "/stock", [
+                          field(
+                            "item_id",
+                            "Item",
+                            "select",
+                            opts(items.filter((i) => i.tracking === "BULK")),
+                          ),
+                          field(
+                            "location_id",
+                            "Location",
+                            "select",
+                            opts(locations),
+                          ),
+                          field("bucket", "Stock bucket", "select", [
+                            "USABLE",
+                            "DAMAGED",
+                            "MAINTENANCE",
+                            "LOST",
+                            "RETIRED",
+                          ]),
+                          field(
+                            "quantity",
+                            "Quantity change (+ or −)",
+                            "number",
+                          ),
+                          field("reason", "Reason"),
+                        ])
+                      }
+                    >
+                      Adjust stock
+                    </button>
+                    <button
+                      onClick={() =>
+                        open("Transfer bulk stock", "/transfers", [
+                          field(
+                            "item_id",
+                            "Item",
+                            "select",
+                            opts(items.filter((i) => i.tracking === "BULK")),
+                          ),
+                          field(
+                            "from",
+                            "From location",
+                            "select",
+                            opts(locations),
+                          ),
+                          field("to", "To location", "select", opts(locations)),
+                          field("bucket", "Condition", "select", [
+                            "USABLE",
+                            "DAMAGED",
+                            "MAINTENANCE",
+                            "LOST",
+                            "RETIRED",
+                          ]),
+                          field("quantity", "Quantity", "number", null, 1),
+                          field("reason", "Reason"),
+                        ])
+                      }
+                    >
+                      Transfer
+                    </button>
+                    <button
+                      onClick={() =>
+                        open("New category", "/categories", [
+                          field("name", "Category name"),
+                        ])
+                      }
+                    >
+                      Category
+                    </button>
+                  </>
+                )}
+                {tab === "Students" && (
+                  <button
+                    onClick={() =>
+                      open("Register student", "/students", [
+                        field("name", "Full name"),
+                        field("username", "Username"),
+                        field("enrolment", "Enrolment number"),
+                        field("programme", "Programme"),
+                        field("semester", "Semester", "number", null, 1),
+                        field(
+                          "password",
+                          "Initial password (12+ characters)",
+                          "password",
+                        ),
+                      ])
+                    }
+                  >
+                    <Plus size={16} />
+                    Register student
+                  </button>
+                )}
+                {tab === "Locations" && (
+                  <button
+                    onClick={() =>
+                      open("Add location", "/locations", [
+                        field("name", "Location name"),
+                        field("parent_id", "Parent location", "select", [
+                          { value: "", label: "No parent" },
+                          ...opts(locations),
+                        ]),
+                      ])
+                    }
+                  >
+                    <Plus size={16} />
+                    New location
+                  </button>
+                )}
+                {["Loans", "Renewals"].includes(tab) && (
+                  <select
+                    aria-label="Filter status"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                  >
+                    {(tab === "Loans"
+                      ? ["All", "Active", "Overdue", "Returned"]
+                      : ["All", "PENDING", "APPROVED", "REJECTED"]
+                    ).map((x) => (
+                      <option key={x}>{x}</option>
+                    ))}
+                  </select>
+                )}
+                {tab === "Reports" && (
+                  <>
+                    <select
+                      aria-label="Report type"
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                    >
+                      {[
+                        "All",
+                        "Overdue",
+                        "Upcoming",
+                        "Stock",
+                        "Transactions",
+                      ].map((x) => (
+                        <option key={x}>{x}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => window.print()}>Print</button>
+                    <button
+                      onClick={() => csv("depttrack-" + filter, reportRows())}
+                    >
+                      Export CSV
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          {tab === "Inventory" && (
+            <>
+              <section className="panel">
+                {items.filter(matches).length ? (
+                  <Table
+                    heads={[
+                      "Equipment",
+                      "Tracking",
+                      "Available",
+                      "On loan",
+                      "Other",
+                      "Status",
+                      "",
+                    ]}
+                  >
+                    {items.filter(matches).map((i) => (
+                      <tr key={i.id}>
+                        <td>
+                          <strong>{i.name}</strong>
+                          <small>
+                            {i.code} · {i.category}
+                          </small>
+                        </td>
+                        <td>
+                          <Badge>{i.tracking}</Badge>
+                        </td>
+                        <td>
+                          <strong className="green-text">
+                            {count(i, "USABLE")}
+                          </strong>
+                        </td>
+                        <td>
+                          {active
+                            .filter((x) => x.item_id === i.id)
+                            .reduce((n, x) => n + x.quantity - x.returned, 0)}
+                        </td>
+                        <td>
+                          {["DAMAGED", "MAINTENANCE", "LOST", "RETIRED"]
+                            .map((b) => `${b.toLowerCase()}: ${count(i, b)}`)
+                            .join(" · ")}
+                        </td>
+                        <td>
+                          <Badge tone={i.active ? "green" : ""}>
+                            {i.active ? "Active" : "Retired"}
+                          </Badge>
+                        </td>
+                        <td>
+                          <button
+                            className="text-button"
+                            onClick={() =>
+                              open(
+                                "Edit inventory item",
+                                "/items/" + i.id + "/update",
+                                [
+                                  field("name", "Name", "text", null, i.name),
+                                  field(
+                                    "description",
+                                    "Description",
+                                    "text",
+                                    null,
+                                    i.description,
+                                  ),
+                                  field(
+                                    "model",
+                                    "Model",
+                                    "text",
+                                    null,
+                                    i.model,
+                                  ),
+                                  field(
+                                    "active",
+                                    "Active and available for lending",
+                                    "checkbox",
+                                    null,
+                                    !!i.active,
+                                  ),
+                                ],
+                              )
+                            }
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </Table>
+                ) : (
+                  <Empty />
+                )}
+              </section>
+              <section className="panel spaced">
+                <div className="panel-heading">
+                  <h2>Individual asset register</h2>
+                  <Badge>{assets.length} assets</Badge>
+                </div>
+                <Table
+                  heads={[
+                    "Asset tag",
+                    "Equipment",
+                    "Location",
+                    "Condition",
+                    "",
+                  ]}
+                >
+                  {assets.filter(matches).map((a) => (
+                    <tr key={a.id}>
+                      <td>
+                        <strong>{a.tag}</strong>
+                        <small>{a.serial}</small>
+                      </td>
+                      <td>{items.find((i) => i.id === a.item_id)?.name}</td>
+                      <td>
+                        {locations.find((l) => l.id === a.location_id)?.name}
+                      </td>
+                      <td>
+                        <Badge tone={a.status === "USABLE" ? "green" : ""}>
+                          {a.status}
+                        </Badge>
+                      </td>
+                      <td>
+                        <button
+                          disabled={a.status === "ISSUED"}
+                          className="text-button"
+                          onClick={() =>
+                            open(
+                              "Update asset condition / location",
+                              "/assets/" + a.id + "/status",
+                              [
+                                field(
+                                  "status",
+                                  "Condition",
+                                  "select",
+                                  [
+                                    "USABLE",
+                                    "DAMAGED",
+                                    "MAINTENANCE",
+                                    "LOST",
+                                    "RETIRED",
+                                  ],
+                                  a.status,
+                                ),
+                                field(
+                                  "location_id",
+                                  "Location",
+                                  "select",
+                                  opts(locations),
+                                  a.location_id,
+                                ),
+                                field("reason", "Reason"),
+                              ],
+                            )
+                          }
+                        >
+                          Update
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {studentIssues.map((iss) => (
-                      <tr key={iss.id}>
+                  ))}
+                </Table>
+              </section>
+            </>
+          )}
+          {tab === "Loans" && (
+            <section className="panel">
+              {loanTable(
+                issues
+                  .filter(matches)
+                  .filter(
+                    (i) =>
+                      filter === "All" ||
+                      (filter === "Active" && i.quantity > i.returned) ||
+                      (filter === "Returned" && i.quantity === i.returned) ||
+                      (filter === "Overdue" &&
+                        i.quantity > i.returned &&
+                        i.overdue_days > 0),
+                  ),
+              )}
+            </section>
+          )}
+          {tab === "Renewals" && (
+            <section className="panel">
+              {renewals
+                .filter(matches)
+                .filter((r) => filter === "All" || r.status === filter)
+                .length ? (
+                <Table
+                  heads={[
+                    "Borrower / equipment",
+                    "Reason",
+                    "Status",
+                    "Deadline",
+                    "Decision",
+                  ]}
+                >
+                  {renewals
+                    .filter(matches)
+                    .filter((r) => filter === "All" || r.status === filter)
+                    .map((r) => (
+                      <tr key={r.id}>
                         <td>
-                          <div style={{ fontWeight: 600 }}>{iss.itemName}</div>
-                          {iss.assetId && (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>
-                              Unique Asset ID: {iss.assetId}
-                            </div>
-                          )}
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            Ack #{iss.acknowledgementNumber}
-                          </div>
+                          <strong>{r.student_name}</strong>
+                          <small>{r.item_name}</small>
                         </td>
-                        <td style={{ fontWeight: 600 }}>{iss.outstandingQuantity} unit(s)</td>
-                        <td>{new Date(iss.issueDate).toLocaleDateString()}</td>
+                        <td>{r.reason}</td>
                         <td>
-                          <div style={{ fontWeight: 600 }}>
-                            {new Date(iss.dueDate).toLocaleDateString()}
-                          </div>
-                          {iss.isOverdue && (
-                            <div style={{ color: 'var(--danger)', fontSize: '0.75rem', fontWeight: 600 }}>
-                              Overdue by {iss.overdueDays} day(s)
-                            </div>
-                          )}
+                          <Badge
+                            tone={
+                              r.status === "PENDING"
+                                ? "amber"
+                                : r.status === "APPROVED"
+                                  ? "green"
+                                  : "red"
+                            }
+                          >
+                            {r.status}
+                          </Badge>
                         </td>
+                        <td>{date(r.new_due || r.old_due)}</td>
                         <td>
-                          {iss.status === 'Returned' && (
-                            <span className="badge badge-success">Returned</span>
-                          )}
-                          {iss.status === 'PartialReturned' && (
-                            <span className="badge badge-warning">Partial Returned</span>
-                          )}
-                          {iss.status === 'Active' && !iss.isOverdue && (
-                            <span className="badge badge-primary">Active</span>
-                          )}
-                          {iss.isOverdue && iss.status !== 'Returned' && (
-                            <span className="badge badge-danger">Overdue</span>
-                          )}
-                        </td>
-                        <td>
-                          {iss.status !== 'Returned' && (
+                          {staff && r.status === "PENDING" ? (
                             <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => {
-                                setSelectedIssueForRenewal(iss);
-                                setShowRenewalModal(true);
-                              }}
+                              className="text-button"
+                              onClick={() =>
+                                open(
+                                  "Review renewal",
+                                  "/renewals/" + r.id + "/decision",
+                                  [
+                                    field("decision", "Decision", "select", [
+                                      "APPROVED",
+                                      "REJECTED",
+                                    ]),
+                                    field("remarks", "Decision remarks"),
+                                  ],
+                                )
+                              }
                             >
-                              <RotateCcw size={13} />
-                              Request 15-Day Renewal
+                              Review request
                             </button>
+                          ) : (
+                            r.remarks || "Awaiting review"
                           )}
                         </td>
                       </tr>
                     ))}
-                    {studentIssues.length === 0 && (
-                      <tr>
-                        <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                          No items currently borrowed by this student account.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Student's Renewal Request Status Tracker */}
-            <div className="section-card">
-              <div className="section-header">
-                <div>
-                  <h2 className="section-title">Renewal Request Tracking</h2>
-                  <p className="section-desc">
-                    Tracking approval status and remarks from department coordinator.
+                </Table>
+              ) : (
+                <Empty message="No renewal requests match this view." />
+              )}
+            </section>
+          )}
+          {tab === "Students" && (
+            <section className="panel">
+              <Table
+                heads={["Student", "Enrolment", "Programme", "Status", ""]}
+              >
+                {(data.students || []).filter(matches).map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <strong>{s.name}</strong>
+                      <small>@{s.username}</small>
+                    </td>
+                    <td>{s.enrolment}</td>
+                    <td>
+                      {s.programme}
+                      <small>Semester {s.semester}</small>
+                    </td>
+                    <td>
+                      <Badge tone={s.active ? "green" : "red"}>
+                        {s.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </td>
+                    <td>
+                      <button
+                        className="text-button"
+                        onClick={() =>
+                          open(
+                            "Student eligibility",
+                            "/students/" + s.id + "/status",
+                            [
+                              field(
+                                "active",
+                                "Student is eligible to borrow",
+                                "checkbox",
+                                null,
+                                !!s.active,
+                              ),
+                            ],
+                          )
+                        }
+                      >
+                        Manage
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </Table>
+            </section>
+          )}
+          {tab === "Locations" && (
+            <div className="location-grid">
+              {locations.filter(matches).map((l) => (
+                <section className="panel location" key={l.id}>
+                  <MapPin size={25} />
+                  <h2>{l.name}</h2>
+                  <p className="muted">
+                    {locations.find((p) => p.id === l.parent_id)?.name ||
+                      "Department location"}
                   </p>
-                </div>
-              </div>
-
-              <div className="table-responsive">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Request ID</th>
-                      <th>Item</th>
-                      <th>Request Date</th>
-                      <th>Original Due Date</th>
-                      <th>Proposed Due Date</th>
-                      <th>Approval Status</th>
-                      <th>Coordinator Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {renewals
-                      .filter((r) => r.studentEnrolment === activeStudentEnrolment)
-                      .map((ren) => (
-                        <tr key={ren.id}>
-                          <td>{ren.id}</td>
-                          <td style={{ fontWeight: 500 }}>{ren.itemName}</td>
-                          <td>{new Date(ren.requestDate).toLocaleDateString()}</td>
-                          <td>{new Date(ren.currentDueDate).toLocaleDateString()}</td>
-                          <td style={{ color: 'var(--success)', fontWeight: 600 }}>
-                            {new Date(ren.proposedDueDate).toLocaleDateString()}
-                          </td>
-                          <td>
-                            {ren.status === 'Pending' && (
-                              <span className="badge badge-warning">Pending Coordinator Review</span>
-                            )}
-                            {ren.status === 'Approved' && (
-                              <span className="badge badge-success">Approved (+15 Calendar Days)</span>
-                            )}
-                            {ren.status === 'Rejected' && (
-                              <span className="badge badge-danger">Rejected</span>
-                            )}
-                          </td>
-                          <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            {ren.remarks || '—'}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
+                  <Badge>
+                    {assets.filter((a) => a.location_id === l.id).length}{" "}
+                    individual assets
+                  </Badge>
+                </section>
+              ))}
             </div>
-          </div>
-        )}
+          )}
+          {tab === "Reports" && (
+            <section className="panel">
+              <div className="panel-heading">
+                <h2>
+                  {filter === "All" ? "Loan register" : filter + " report"}
+                </h2>
+                <Badge>{reportRows().length} records</Badge>
+              </div>
+              {reportRows().length ? (
+                <Table heads={Object.keys(reportRows()[0])}>
+                  {reportRows().map((r, i) => (
+                    <tr key={i}>
+                      {Object.values(r).map((v, k) => (
+                        <td key={k}>{String(v ?? "—")}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </Table>
+              ) : (
+                <Empty />
+              )}
+            </section>
+          )}
+          {tab === "Audit trail" && (
+            <section className="panel">
+              <Table
+                heads={[
+                  "Time",
+                  "Staff member",
+                  "Action",
+                  "Reference",
+                  "Details",
+                ]}
+              >
+                {(data.audit || []).filter(matches).map((a) => (
+                  <tr key={a.id}>
+                    <td>{a.created_at}</td>
+                    <td>{a.actor}</td>
+                    <td>
+                      <Badge>{a.action}</Badge>
+                    </td>
+                    <td>{a.entity_id.slice(0, 8)}</td>
+                    <td className="audit-detail">
+                      {JSON.stringify(a.details)}
+                    </td>
+                  </tr>
+                ))}
+              </Table>
+            </section>
+          )}
+          {tab === "Settings" && (
+            <section className="panel settings">
+              <ShieldCheck size={32} />
+              <h2>Borrowing policy</h2>
+              <p>
+                Issue and renewal periods are fixed at 15 calendar days.
+                Deadlines use Asia/Kolkata calendar dates.
+              </p>
+              <dl>
+                <dt>Maximum outstanding units per student</dt>
+                <dd>{data.policy?.max_units}</dd>
+                <dt>Maximum renewals per issue</dt>
+                <dd>{data.policy?.max_renewals}</dd>
+                <dt>Allow overdue renewal approval</dt>
+                <dd>{data.policy?.allow_overdue ? "Yes" : "No"}</dd>
+              </dl>
+              {user.role === "ADMIN" && (
+                <button
+                  className="primary"
+                  onClick={() =>
+                    open("Edit borrowing policy", "/policy", [
+                      field(
+                        "max_units",
+                        "Maximum outstanding units",
+                        "number",
+                        null,
+                        data.policy.max_units,
+                      ),
+                      field(
+                        "max_renewals",
+                        "Maximum renewals",
+                        "number",
+                        null,
+                        data.policy.max_renewals,
+                      ),
+                      field(
+                        "allow_overdue",
+                        "Allow overdue renewals",
+                        "checkbox",
+                        null,
+                        !!data.policy.allow_overdue,
+                      ),
+                    ])
+                  }
+                >
+                  Edit policy
+                </button>
+              )}
+            </section>
+          )}
+          <footer>
+            DeptTrack <span>Thoughtfully organized. Responsibly managed.</span>
+          </footer>
+        </div>
       </main>
-
-      {/* ======================================================== */}
-      {/* MODALS                                                   */}
-      {/* ======================================================== */}
-
-      {/* 1. Issue Item Modal */}
-      {showIssueModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Issue Inventory Item</h3>
-              <button className="close-btn" onClick={() => setShowIssueModal(false)}>
-                <X size={18} />
+      {modal && (
+        <div
+          className="modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !busy) setModal(null);
+          }}
+        >
+          <section
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+          >
+            <div className="panel-heading">
+              <h2 id="modal-title">{modal.title}</h2>
+              <button
+                aria-label="Close dialog"
+                onClick={() => setModal(null)}
+                disabled={busy}
+              >
+                <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleIssueSubmit}>
-              <div className="form-group">
-                <label className="form-label">Registered Student *</label>
-                <select
-                  className="select-filter"
-                  style={{ width: '100%' }}
-                  value={issueForm.studentEnrolment}
-                  onChange={(e) => setIssueForm({ ...issueForm, studentEnrolment: e.target.value })}
-                  required
-                >
-                  {students.map((st) => (
-                    <option key={st.enrolmentNumber} value={st.enrolmentNumber}>
-                      {st.name} ({st.enrolmentNumber}) — {st.programme}
-                    </option>
-                  ))}
-                </select>
-                <div className="form-hint">Mandatory: Only registered students can receive items.</div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Inventory Item *</label>
-                <select
-                  className="select-filter"
-                  style={{ width: '100%' }}
-                  value={issueForm.itemId}
-                  onChange={(e) => {
-                    const sel = items.find((i) => i.id === e.target.value);
-                    setIssueForm({
-                      ...issueForm,
-                      itemId: e.target.value,
-                      assetId: '',
-                      quantity: 1
-                    });
-                  }}
-                  required
-                >
-                  <option value="">-- Choose Item --</option>
-                  {items.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} ({i.itemCode}) — Avail: {i.availableQuantity} / {i.totalQuantity}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Asset selection if individually tracked */}
-              {items.find((i) => i.id === issueForm.itemId)?.trackingType === 'INDIVIDUAL' && (
-                <div className="form-group">
-                  <label className="form-label">Select Unique Asset ID *</label>
-                  <select
-                    className="select-filter"
-                    style={{ width: '100%' }}
-                    value={issueForm.assetId}
-                    onChange={(e) => setIssueForm({ ...issueForm, assetId: e.target.value })}
-                    required
-                  >
-                    <option value="">-- Select Available Usable Asset --</option>
-                    {assets
-                      .filter(
-                        (a) =>
-                          a.itemId === issueForm.itemId &&
-                          a.status === 'Available' &&
-                          a.condition === 'Usable'
-                      )
-                      .map((a) => (
-                        <option key={a.id} value={a.assetId}>
-                          {a.assetId} (SN: {a.serialNumber}) — Location: {a.locationDetails}
+            <form onSubmit={submit}>
+              {modal.fields.map((f) => (
+                <label key={f.name}>
+                  {f.label}
+                  {f.type === "select" ? (
+                    <select
+                      aria-label={f.label}
+                      name={f.name}
+                      defaultValue={f.initial}
+                      required={f.name !== "asset_id" && f.name !== "parent_id"}
+                    >
+                      {f.options.map((o) => (
+                        <option key={o.value ?? o} value={o.value ?? o}>
+                          {o.label ?? o}
                         </option>
                       ))}
-                  </select>
-                  <div className="form-hint">
-                    Rule: Individually tracked assets cannot be checked out to more than one student.
-                  </div>
+                    </select>
+                  ) : f.type === "checkbox" ? (
+                    <input
+                      aria-label={f.label}
+                      name={f.name}
+                      type="checkbox"
+                      defaultChecked={f.initial}
+                    />
+                  ) : (
+                    <input
+                      aria-label={f.label}
+                      name={f.name}
+                      type={f.type}
+                      defaultValue={f.initial}
+                      required={
+                        !["description", "model", "serial"].includes(f.name)
+                      }
+                      step={f.type === "number" ? 1 : undefined}
+                      autoComplete={
+                        f.type === "password" ? "new-password" : undefined
+                      }
+                    />
+                  )}
+                </label>
+              ))}
+              {error && (
+                <div className="error" role="alert">
+                  {error}
                 </div>
               )}
-
-              {/* Quantity input if quantity-based */}
-              {items.find((i) => i.id === issueForm.itemId)?.trackingType === 'QUANTITY' && (
-                <div className="form-group">
-                  <label className="form-label">Quantity to Issue *</label>
-                  <input
-                    type="number"
-                    min="1"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={issueForm.quantity}
-                    onChange={(e) => setIssueForm({ ...issueForm, quantity: e.target.value })}
-                    required
-                  />
-                  <div className="form-hint">
-                    Available stock:{' '}
-                    {items.find((i) => i.id === issueForm.itemId)?.availableQuantity ?? 0}
-                  </div>
-                </div>
-              )}
-
-              <div className="form-group">
-                <label className="form-label">Issue Date</label>
-                <input
-                  type="date"
-                  className="input-text"
-                  style={{ width: '100%' }}
-                  value={issueForm.issueDate}
-                  onChange={(e) => setIssueForm({ ...issueForm, issueDate: e.target.value })}
-                />
-                <div className="form-hint">
-                  Due date will automatically be set to exactly 15 calendar days later.
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Purpose of Issue</label>
-                <input
-                  type="text"
-                  className="input-text"
-                  style={{ width: '100%' }}
-                  value={issueForm.purpose}
-                  onChange={(e) => setIssueForm({ ...issueForm, purpose: e.target.value })}
-                  placeholder="e.g. M.Sc. DFIS Embedded Hardware Lab Exercise"
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowIssueModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Confirm Issue & Generate Ack Slip
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Return Item Modal */}
-      {showReturnModal && selectedIssueForReturn && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Record Return & Inspect Condition</h3>
-              <button className="close-btn" onClick={() => setShowReturnModal(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleReturnSubmit}>
-              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-sm)' }}>
-                <div>Item: <strong>{selectedIssueForReturn.itemName}</strong></div>
-                {selectedIssueForReturn.assetId && <div>Asset ID: <strong>{selectedIssueForReturn.assetId}</strong></div>}
-                <div>Student: <strong>{selectedIssueForReturn.studentName} ({selectedIssueForReturn.studentEnrolment})</strong></div>
-                <div>Outstanding: <strong>{selectedIssueForReturn.outstandingQuantity}</strong> unit(s)</div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Return Quantity *</label>
-                <input
-                  type="number"
-                  min="1"
-                  max={selectedIssueForReturn.outstandingQuantity}
-                  className="input-text"
-                  style={{ width: '100%' }}
-                  value={returnForm.returnQuantity}
-                  onChange={(e) => setReturnForm({ ...returnForm, returnQuantity: e.target.value })}
-                  required
-                />
-                <div className="form-hint">
-                  Partial returns are supported; any remaining balance continues as outstanding.
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Condition on Return (Mandatory Inspection) *</label>
-                <select
-                  className="select-filter"
-                  style={{ width: '100%' }}
-                  value={returnForm.conditionOnReturn}
-                  onChange={(e) => setReturnForm({ ...returnForm, conditionOnReturn: e.target.value })}
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  onClick={() => setModal(null)}
+                  disabled={busy}
                 >
-                  <option value="Usable">Usable (Stock is immediately restored to Available)</option>
-                  <option value="Damaged">Damaged (Marked unavailable until coordinator resolves)</option>
-                  <option value="Maintenance">Under Maintenance (Marked unavailable for calibration/repair)</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Receiving Staff Member</label>
-                <input
-                  type="text"
-                  className="input-text"
-                  style={{ width: '100%' }}
-                  value={returnForm.receivingStaff}
-                  onChange={(e) => setReturnForm({ ...returnForm, receivingStaff: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Inspection Remarks</label>
-                <input
-                  type="text"
-                  className="input-text"
-                  style={{ width: '100%' }}
-                  value={returnForm.remarks}
-                  onChange={(e) => setReturnForm({ ...returnForm, remarks: e.target.value })}
-                  placeholder="e.g. Returned with all pin headers intact, fully functional."
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowReturnModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  Confirm Return Receipt
+                <button className="primary" disabled={busy}>
+                  {busy ? "Saving…" : "Save changes"}
+                  <Check size={16} />
                 </button>
               </div>
             </form>
-          </div>
+          </section>
         </div>
       )}
-
-      {/* 3. Student Renewal Request Modal */}
-      {showRenewalModal && selectedIssueForRenewal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Request 15-Day Renewal</h3>
-              <button className="close-btn" onClick={() => setShowRenewalModal(false)}>
-                <X size={18} />
+      {receipt && (
+        <div className="modal-backdrop">
+          <section className="modal receipt" role="dialog" aria-modal="true">
+            <ShieldCheck size={40} />
+            <h2>Issue acknowledged</h2>
+            <p>Reference: {receipt.id}</p>
+            <p>Issued: {date(receipt.issued_on)}</p>
+            <h3>Due: {date(receipt.due_on)}</h3>
+            <p>
+              Please return equipment in its issued condition or request a
+              renewal before the due date.
+            </p>
+            <div className="actions">
+              <button onClick={() => window.print()}>
+                Print acknowledgement
               </button>
-            </div>
-            <form onSubmit={handleRenewalSubmit}>
-              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-sm)' }}>
-                <div>Item: <strong>{selectedIssueForRenewal.itemName}</strong></div>
-                <div>Current Due Date: <strong>{new Date(selectedIssueForRenewal.dueDate).toLocaleDateString()}</strong></div>
-                <div style={{ color: 'var(--success)', marginTop: '0.25rem' }}>
-                  Requested New Due Date: <strong>{new Date(new Date(selectedIssueForRenewal.dueDate).getTime() + (15 * 24 * 60 * 60 * 1000)).toLocaleDateString()}</strong> (+15 calendar days)
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Reason for Renewal *</label>
-                <textarea
-                  className="input-textarea"
-                  style={{ width: '100%', minHeight: '90px' }}
-                  value={renewalForm.reason}
-                  onChange={(e) => setRenewalForm({ ...renewalForm, reason: e.target.value })}
-                  placeholder="Explain why extension is required for your project..."
-                  required
-                />
-                <div className="form-hint">
-                  Note: Submitting this request does NOT automatically extend the due date until the Coordinator approves it.
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowRenewalModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Submit Renewal Request
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 4. Add Inventory Item Modal */}
-      {showAddItemModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Add New Inventory Item</h3>
-              <button className="close-btn" onClick={() => setShowAddItemModal(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleAddItem}>
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Item Code *</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newItemForm.itemCode}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, itemCode: e.target.value })}
-                    placeholder="e.g. DEV-BOARD-01"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Item Name *</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newItemForm.name}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, name: e.target.value })}
-                    placeholder="e.g. Raspberry Pi 5"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Category</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newItemForm.category}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, category: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Make / Model</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newItemForm.makeModel}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, makeModel: e.target.value })}
-                    placeholder="e.g. 8GB RAM Model B"
-                  />
-                </div>
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Tracking Type *</label>
-                  <select
-                    className="select-filter"
-                    style={{ width: '100%' }}
-                    value={newItemForm.trackingType}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, trackingType: e.target.value })}
-                  >
-                    <option value="QUANTITY">Quantity-Based (e.g. Cables, Adapters)</option>
-                    <option value="INDIVIDUAL">Individually Tracked (e.g. Laptops, Dev Boards)</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Initial Quantity *</label>
-                  <input
-                    type="number"
-                    min="1"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newItemForm.totalQuantity}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, totalQuantity: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Storage Location</label>
-                <select
-                  className="select-filter"
-                  style={{ width: '100%' }}
-                  value={newItemForm.locationId}
-                  onChange={(e) => setNewItemForm({ ...newItemForm, locationId: e.target.value })}
-                >
-                  <option value="">-- Select Location --</option>
-                  {locations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.laboratory} ({loc.room}, {loc.cupboard})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Description</label>
-                <textarea
-                  className="input-textarea"
-                  style={{ width: '100%' }}
-                  value={newItemForm.description}
-                  onChange={(e) => setNewItemForm({ ...newItemForm, description: e.target.value })}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddItemModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Save Item
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Add Asset Modal */}
-      {showAddAssetModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Register Individually Tracked Asset</h3>
-              <button className="close-btn" onClick={() => setShowAddAssetModal(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleAddAsset}>
-              <div className="form-group">
-                <label className="form-label">Parent Inventory Item *</label>
-                <select
-                  className="select-filter"
-                  style={{ width: '100%' }}
-                  value={newAssetForm.itemId}
-                  onChange={(e) => setNewAssetForm({ ...newAssetForm, itemId: e.target.value })}
-                  required
-                >
-                  <option value="">-- Choose Item --</option>
-                  {items
-                    .filter((i) => i.trackingType === 'INDIVIDUAL')
-                    .map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name} ({i.itemCode})
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Unique Asset ID *</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newAssetForm.assetId}
-                    onChange={(e) => setNewAssetForm({ ...newAssetForm, assetId: e.target.value })}
-                    placeholder="e.g. DB-014 or LPT-005"
-                    required
-                  />
-                  <div className="form-hint">Must be globally unique.</div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Serial Number</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newAssetForm.serialNumber}
-                    onChange={(e) => setNewAssetForm({ ...newAssetForm, serialNumber: e.target.value })}
-                    placeholder="e.g. SN-892182"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Initial Condition</label>
-                <select
-                  className="select-filter"
-                  style={{ width: '100%' }}
-                  value={newAssetForm.condition}
-                  onChange={(e) => setNewAssetForm({ ...newAssetForm, condition: e.target.value })}
-                >
-                  <option value="Usable">Usable</option>
-                  <option value="Damaged">Damaged</option>
-                  <option value="Under Maintenance">Under Maintenance</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddAssetModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Register Asset
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 6. Add Storage Location Modal */}
-      {showLocationModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Add Storage Location</h3>
-              <button className="close-btn" onClick={() => setShowLocationModal(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleAddLocation}>
-              <div className="form-group">
-                <label className="form-label">Department *</label>
-                <input
-                  type="text"
-                  className="input-text"
-                  style={{ width: '100%' }}
-                  value={newLocationForm.department}
-                  onChange={(e) => setNewLocationForm({ ...newLocationForm, department: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Laboratory *</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newLocationForm.laboratory}
-                    onChange={(e) => setNewLocationForm({ ...newLocationForm, laboratory: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Room Number *</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newLocationForm.room}
-                    onChange={(e) => setNewLocationForm({ ...newLocationForm, room: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Cupboard / Rack</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newLocationForm.cupboard}
-                    onChange={(e) => setNewLocationForm({ ...newLocationForm, cupboard: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Shelf Number</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={newLocationForm.shelf}
-                    onChange={(e) => setNewLocationForm({ ...newLocationForm, shelf: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowLocationModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Save Storage Location
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 7. Stock Adjustment Modal */}
-      {showStockAdjustmentModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">Record Stock Adjustment</h3>
-              <button className="close-btn" onClick={() => setShowStockAdjustmentModal(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleStockAdjustment}>
-              <div className="form-group">
-                <label className="form-label">Item *</label>
-                <select
-                  className="select-filter"
-                  style={{ width: '100%' }}
-                  value={adjustmentForm.itemId}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, itemId: e.target.value })}
-                  required
-                >
-                  <option value="">-- Choose Item --</option>
-                  {items.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} ({i.itemCode}) — Current Total: {i.totalQuantity}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Adjustment Type *</label>
-                  <select
-                    className="select-filter"
-                    style={{ width: '100%' }}
-                    value={adjustmentForm.adjustmentType}
-                    onChange={(e) => setAdjustmentForm({ ...adjustmentForm, adjustmentType: e.target.value })}
-                  >
-                    <option value="NEW_STOCK">New Stock Arrival (+)</option>
-                    <option value="CORRECTION">Inventory Audit Correction (+/-)</option>
-                    <option value="RETIREMENT">Item Retirement / Decommission (-)</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Quantity Delta *</label>
-                  <input
-                    type="number"
-                    className="input-text"
-                    style={{ width: '100%' }}
-                    value={adjustmentForm.quantity}
-                    onChange={(e) => setAdjustmentForm({ ...adjustmentForm, quantity: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Reason / Justification (Mandatory) *</label>
-                <input
-                  type="text"
-                  className="input-text"
-                  style={{ width: '100%' }}
-                  value={adjustmentForm.reason}
-                  onChange={(e) => setAdjustmentForm({ ...adjustmentForm, reason: e.target.value })}
-                  placeholder="e.g. Annual physical count variance or procurement batch 2026-Q4"
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowStockAdjustmentModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Post Adjustment
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 8. Printable Acknowledgement Slip Modal */}
-      {activeAckSlip && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '620px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Item Issue Acknowledgement Slip</h3>
-              <button className="close-btn" onClick={() => setActiveAckSlip(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="ack-slip" id="print-slip">
-              <h3>DEPARTMENT INVENTORY MANAGEMENT</h3>
-              <div style={{ fontSize: '0.8rem', color: '#4b5563', marginBottom: '0.75rem' }}>
-                OFFICIAL ITEM ISSUE ACKNOWLEDGEMENT & LOAN CONTRACT
-              </div>
-
-              <div className="ack-meta-row">
-                <span>Acknowledgement Ref:</span>
-                <strong>{activeAckSlip.acknowledgementNumber || activeAckSlip.id}</strong>
-              </div>
-              <div className="ack-meta-row">
-                <span>Student Name:</span>
-                <strong>{activeAckSlip.studentName}</strong>
-              </div>
-              <div className="ack-meta-row">
-                <span>Enrolment Number:</span>
-                <strong>{activeAckSlip.studentEnrolment}</strong>
-              </div>
-              <div className="ack-meta-row">
-                <span>Programme:</span>
-                <span>{activeAckSlip.programme || 'M.Sc. DFIS'}</span>
-              </div>
-              <div className="ack-meta-row">
-                <span>Issued Item:</span>
-                <strong>{activeAckSlip.itemName}</strong>
-              </div>
-              {activeAckSlip.assetId && (
-                <div className="ack-meta-row">
-                  <span>Asset ID (Individually Tracked):</span>
-                  <strong>{activeAckSlip.assetId}</strong>
-                </div>
-              )}
-              <div className="ack-meta-row">
-                <span>Quantity Issued:</span>
-                <strong>{activeAckSlip.quantity} unit(s)</strong>
-              </div>
-              <div className="ack-meta-row">
-                <span>Issue Date:</span>
-                <span>{new Date(activeAckSlip.issueDate).toLocaleDateString()}</span>
-              </div>
-
-              <div className="ack-due-highlight">
-                MANDATORY RETURN / RENEWAL DUE DATE:<br />
-                {new Date(activeAckSlip.dueDate).toLocaleDateString()} (15 Calendar Days)
-              </div>
-
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.75rem' }}>
-                Notice: Every item issued must be returned or renewed within 15 days. Submitting a renewal request alone does not extend this due date; coordinator approval is required.
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #d1d5db', fontSize: '0.75rem' }}>
-                <div>Student Signature: __________________</div>
-                <div>Coordinator Signature: __________________</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-              <button className="btn btn-secondary" onClick={() => window.print()}>
-                <Printer size={15} />
-                Print Acknowledgement
-              </button>
-              <button className="btn btn-primary" onClick={() => setActiveAckSlip(null)}>
+              <button className="primary" onClick={() => setReceipt(null)}>
                 Done
               </button>
             </div>
-          </div>
+          </section>
         </div>
       )}
     </div>
   );
+  function reportRows() {
+    if (filter === "Stock")
+      return items.filter(matches).map((i) => ({
+        Code: i.code,
+        Item: i.name,
+        Category: i.category,
+        Available: count(i, "USABLE"),
+        Damaged: count(i, "DAMAGED"),
+        Maintenance: count(i, "MAINTENANCE"),
+        Lost: count(i, "LOST"),
+        Retired: count(i, "RETIRED"),
+      }));
+    if (filter === "Transactions")
+      return (data.movements || []).filter(matches).map((m) => ({
+        Date: m.created_at,
+        Item: items.find((i) => i.id === m.item_id)?.name,
+        Location: locations.find((l) => l.id === m.location_id)?.name,
+        Condition: m.bucket,
+        Change: m.delta,
+        Reason: m.reason,
+      }));
+    return issues
+      .filter(matches)
+      .filter((i) =>
+        filter === "Overdue"
+          ? i.quantity > i.returned && i.overdue_days > 0
+          : filter === "Upcoming"
+            ? i.quantity > i.returned &&
+              i.overdue_days <= 0 &&
+              i.overdue_days >= -7
+            : true,
+      )
+      .map((i) => ({
+        Student: i.student_name,
+        Enrolment: i.enrolment,
+        Programme: i.programme,
+        Item: i.item_name,
+        Location: i.location_name,
+        Issued: i.quantity,
+        Outstanding: i.quantity - i.returned,
+        Due: i.due_on,
+      }));
+  }
 }
