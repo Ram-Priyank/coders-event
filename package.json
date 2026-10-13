@@ -1,0 +1,16 @@
+{
+  "name": "department-inventory-mern",
+  "version": "1.0.0",
+  "description": "Department Inventory and Student Item Issue Management System - MERN Stack",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "start": "node server/server.js",
+    "client": "npm run dev --prefix client",
+    "server": "npm run dev --prefix server",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "seed": "cd server && npm run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
